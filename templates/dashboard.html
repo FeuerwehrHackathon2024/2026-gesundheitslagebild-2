@@ -174,13 +174,46 @@
           <div class="workflow-step">
             <div class="step-num">2</div>
             <div class="flex-grow-1">
-              <div class="fw-semibold small mb-1">Patientenliste hochladen</div>
-              <div id="dropzone" class="dropzone rounded-3 p-3 text-center">
-                <i class="bi bi-cloud-upload-fill d-block"></i>
-                <div class="small">XLSX hierher ziehen<br><span class="text-body-secondary">oder klicken</span></div>
-                <input type="file" id="file-input" accept=".xlsx" class="d-none">
+              <div class="fw-semibold small mb-1">Patientenliste</div>
+              <ul class="nav nav-pills nav-fill small mb-2" role="tablist">
+                <li class="nav-item"><button class="nav-link active py-1 px-2" data-bs-toggle="pill" data-bs-target="#src-upload" type="button">
+                  <i class="bi bi-file-earmark-excel"></i> XLSX
+                </button></li>
+                <li class="nav-item"><button class="nav-link py-1 px-2" data-bs-toggle="pill" data-bs-target="#src-manual" type="button">
+                  <i class="bi bi-pen"></i> Manuell
+                </button></li>
+              </ul>
+              <div class="tab-content">
+                <div class="tab-pane fade show active" id="src-upload">
+                  <div id="dropzone" class="dropzone rounded-3 p-3 text-center">
+                    <i class="bi bi-cloud-upload-fill d-block"></i>
+                    <div class="small">XLSX hierher ziehen<br><span class="text-body-secondary">oder klicken (IVENA-Format)</span></div>
+                    <input type="file" id="file-input" accept=".xlsx" class="d-none">
+                  </div>
+                  <div id="dropzone-status" class="form-text small"></div>
+                </div>
+                <div class="tab-pane fade" id="src-manual">
+                  <div class="row g-1">
+                    <div class="col-5">
+                      <input type="text" class="form-control form-control-sm" id="man-id" placeholder="ID (optional)">
+                    </div>
+                    <div class="col-7">
+                      <div class="btn-group w-100" role="group">
+                        <input type="radio" class="btn-check" name="man-sk" id="man-sk1" value="SK1" checked>
+                        <label class="btn btn-sm btn-outline-sk1" for="man-sk1">SK1</label>
+                        <input type="radio" class="btn-check" name="man-sk" id="man-sk2" value="SK2">
+                        <label class="btn btn-sm btn-outline-sk2" for="man-sk2">SK2</label>
+                        <input type="radio" class="btn-check" name="man-sk" id="man-sk3" value="SK3">
+                        <label class="btn btn-sm btn-outline-sk3" for="man-sk3">SK3</label>
+                      </div>
+                    </div>
+                  </div>
+                  <button class="btn btn-sm btn-outline-danger w-100 mt-2" id="btn-add-manual">
+                    <i class="bi bi-plus-lg"></i> Patient hinzufügen
+                  </button>
+                  <div id="man-status" class="form-text small"></div>
+                </div>
               </div>
-              <div id="dropzone-status" class="form-text small"></div>
             </div>
           </div>
 

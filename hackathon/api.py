@@ -99,7 +99,8 @@ def list_krankenhaeuser():
 
 
 @api_bp.get("/krankenhaeuser/<int:krankenhaus_id>")
-def get_krankenhaus(krankenhaus_id: int):
+def get_krankenhaus_full(krankenhaus_id: int):
+    """Vollständiger Row-Dump einer Klinik (alle DB-Spalten) — für Debugging/Export."""
     k = db.session.get(Krankenhaus, krankenhaus_id)
     if k is None:
         abort(404)
@@ -422,6 +423,77 @@ def list_patients():
 
 # ===================== Simulator → direkt laden =====================
 
+@api_bp.post("/patients/manual")
+def add_manual_patient():
+    """Einzelnen Patienten manuell erfassen. Fügt ihn einem 'Manuell'-Batch hinzu.
+
+    Body: { sk: 'SK1'|'SK2'|'SK3' (oder IVENA-Varianten),
+            external_id?: '...', quelle?: 'Hub Süd', eingangssichtung?: ISO, transportbereit?: ISO,
+            hub_name?: 'Hub Süd' }
+    """
+    from datetime import datetime as _dt
+    from .ivena_mapping import map_ivena_to_sk
+
+    payload = request.get_json(silent=True) or {}
+    sk = map_ivena_to_sk(payload.get("sk"))
+    if not sk:
+        return jsonify({"error": "SK-Stufe ungültig (erwartet SK1/SK2/SK3 oder IVENA-Variante)"}), 400
+
+    hub_name = str(payload.get("hub_name") or payload.get("quelle") or "Hub Süd")
+    hub = Hub.query.filter_by(name=hub_name).first() or Hub.query.first()
+    if hub is None:
+        return jsonify({"error": "Kein Hub in DB"}), 500
+
+    # Manuell-Batch finden oder anlegen (pro Tag ein Batch)
+    today_str = _dt.utcnow().strftime("%Y-%m-%d")
+    batch_name = f"Manuell {today_str}"
+    batch = PatientenBatch.query.filter_by(filename=batch_name).first()
+    if batch is None:
+        batch = PatientenBatch(
+            filename=batch_name, hub_id=hub.id, hub_name=hub.name,
+            total=0, sk1=0, sk2=0, sk3=0, status="uploaded",
+        )
+        db.session.add(batch)
+        db.session.flush()
+
+    def _parse_dt(v):
+        if not v:
+            return None
+        try:
+            return _dt.fromisoformat(v)
+        except ValueError:
+            return None
+
+    sichtung = _parse_dt(payload.get("eingangssichtung"))
+    transport = _parse_dt(payload.get("transportbereit")) or sichtung
+
+    ext_id = payload.get("external_id") or f"MAN_{_dt.utcnow().strftime('%H%M%S')}_{batch.total + 1:03d}"
+    patient = Patient(
+        batch_id=batch.id,
+        external_id=ext_id,
+        sk=sk,
+        datum=sichtung.date() if sichtung else _dt.utcnow().date(),
+        eingangssichtung=sichtung,
+        transportbereit=transport,
+        quelle=hub.name,
+    )
+    db.session.add(patient)
+    # Batch-Counter updaten
+    batch.total += 1
+    if sk == "SK1": batch.sk1 += 1
+    elif sk == "SK2": batch.sk2 += 1
+    elif sk == "SK3": batch.sk3 += 1
+    db.session.commit()
+
+    return jsonify({
+        "patient_id": patient.id,
+        "external_id": patient.external_id,
+        "sk": patient.sk,
+        "batch_id": batch.id,
+        "batch_total": batch.total,
+    })
+
+
 @api_bp.post("/batch/from-simulator")
 def batch_from_simulator():
     """Erzeugt einen Patienten-Batch direkt aus Simulator-Parametern (ohne XLSX-Umweg)."""
@@ -511,6 +583,172 @@ def reset_all():
         "batches_deleted": b_count,
         "belegung_reset": cleared,
     })
+
+
+# ===================== Detail-Endpoints =====================
+
+def _patient_to_dict(p: Patient) -> dict:
+    kh = p.assigned_krankenhaus
+    return {
+        "id": p.id,
+        "batch_id": p.batch_id,
+        "external_id": p.external_id,
+        "sk": p.sk,
+        "datum": p.datum.isoformat() if p.datum else None,
+        "eingangssichtung": p.eingangssichtung.isoformat() if p.eingangssichtung else None,
+        "transportbereit": p.transportbereit.isoformat() if p.transportbereit else None,
+        "quelle": p.quelle,
+        "status": p.status,
+        "aufenthaltsdauer_tage": p.aufenthaltsdauer_tage,
+        "distanz_km": p.distanz_km,
+        "ziel": None if not kh else {
+            "id": kh.id, "name": kh.name, "ort": kh.ort, "plz": kh.plz,
+            "strasse": kh.strasse, "hausnummer": kh.hausnummer,
+            "bundesland": kh.bundesland, "lat": kh.lat, "lon": kh.lon,
+            "telefon": kh.telefon, "website": kh.website,
+            "betten": kh.betten, "sk_max": kh.sk_max,
+        },
+        "assigned_at": p.assigned_at.isoformat() if p.assigned_at else None,
+        "note": p.note,
+    }
+
+
+@api_bp.get("/patients/<int:patient_id>")
+def get_patient(patient_id: int):
+    p = db.session.get(Patient, patient_id)
+    if p is None:
+        abort(404)
+    out = _patient_to_dict(p)
+    # Zugehörigen Transportauftrag
+    t = TransportAuftrag.query.filter_by(patient_id=p.id).first()
+    if t:
+        out["transport"] = {
+            "id": t.id,
+            "transportmittel": t.transportmittel,
+            "abfahrt": t.abfahrt.isoformat() if t.abfahrt else None,
+            "ankunft": t.ankunft.isoformat() if t.ankunft else None,
+            "distanz_km": t.distanz_km,
+            "dauer_min": t.dauer_min,
+            "routing_source": t.routing_source,
+            "status": t.status,
+        }
+    return jsonify(out)
+
+
+@api_bp.get("/transports/<int:transport_id>")
+def get_transport(transport_id: int):
+    import json as _json
+    t = db.session.get(TransportAuftrag, transport_id)
+    if t is None:
+        abort(404)
+    kh = t.krankenhaus
+    p = t.patient
+    actions = None
+    if t.here_instructions_json:
+        try:
+            actions = _json.loads(t.here_instructions_json)
+        except Exception:  # noqa: BLE001
+            actions = None
+    geojson = None
+    if t.route_geojson:
+        try:
+            geojson = _json.loads(t.route_geojson)
+        except Exception:  # noqa: BLE001
+            geojson = None
+    return jsonify({
+        "id": t.id,
+        "status": t.status,
+        "sk": t.sk,
+        "transportmittel": t.transportmittel,
+        "abfahrt": t.abfahrt.isoformat() if t.abfahrt else None,
+        "ankunft": t.ankunft.isoformat() if t.ankunft else None,
+        "distanz_km": t.distanz_km,
+        "dauer_min": t.dauer_min,
+        "routing_source": t.routing_source,
+        "hub": {"lat": t.hub_lat, "lon": t.hub_lon,
+                "name": t.hub.name if t.hub else None,
+                "ort": t.hub.ort if t.hub else None},
+        "ziel": None if not kh else {
+            "id": kh.id, "name": kh.name, "ort": kh.ort, "plz": kh.plz,
+            "strasse": kh.strasse, "hausnummer": kh.hausnummer,
+            "bundesland": kh.bundesland,
+            "lat": t.ziel_lat, "lon": t.ziel_lon,
+            "telefon": kh.telefon, "website": kh.website,
+        },
+        "patient": None if not p else {
+            "id": p.id, "external_id": p.external_id,
+            "sk": p.sk, "quelle": p.quelle,
+            "eingangssichtung": p.eingangssichtung.isoformat() if p.eingangssichtung else None,
+            "transportbereit": p.transportbereit.isoformat() if p.transportbereit else None,
+            "aufenthaltsdauer_tage": p.aufenthaltsdauer_tage,
+        },
+        "route_geojson": geojson,
+        "actions": actions,
+        "here_polyline": t.here_polyline,
+        "erzeugt_am": t.erzeugt_am.isoformat() if t.erzeugt_am else None,
+    })
+
+
+@api_bp.get("/krankenhaus/<int:kh_id>")
+def get_krankenhaus(kh_id: int):
+    kh = db.session.get(Krankenhaus, kh_id)
+    if kh is None:
+        abort(404)
+    bel = db.session.get(KrankenhausBelegung, kh_id)
+    return jsonify({
+        "id": kh.id, "name": kh.name,
+        "strasse": kh.strasse, "hausnummer": kh.hausnummer,
+        "plz": kh.plz, "ort": kh.ort, "bundesland": kh.bundesland,
+        "lat": kh.lat, "lon": kh.lon,
+        "telefon": kh.telefon, "email": kh.email, "website": kh.website,
+        "betten": kh.betten, "sk_max": kh.sk_max,
+        "kann_sk1": kh.kann_sk1, "kann_sk2": kh.kann_sk2, "kann_sk3": kh.kann_sk3,
+        "hat_intensivmedizin": kh.hat_intensivmedizin,
+        "hat_notaufnahme": kh.hat_notaufnahme,
+        "hat_bg_zulassung": kh.hat_bg_zulassung,
+        "hat_radiologie": kh.hat_radiologie,
+        "universitaet": kh.universitaet,
+        "traeger_name": kh.traeger_name,
+        "fachabteilungen": kh.fachabteilungen,
+        "apparative_ausstattung": kh.apparative_ausstattung,
+        "ausgeschlossen": kh.ausgeschlossen,
+        "ausschluss_grund": kh.ausschluss_grund,
+        "belegung": None if not bel else {
+            "kapazitaet_sk1": bel.kapazitaet_sk1, "kapazitaet_sk2": bel.kapazitaet_sk2, "kapazitaet_sk3": bel.kapazitaet_sk3,
+            "belegung_sk1": bel.belegung_sk1, "belegung_sk2": bel.belegung_sk2, "belegung_sk3": bel.belegung_sk3,
+            "frei_sk1": bel.frei("SK1"), "frei_sk2": bel.frei("SK2"), "frei_sk3": bel.frei("SK3"),
+            "vorbelegung_prozent": bel.vorbelegung_prozent,
+        },
+    })
+
+
+@api_bp.get("/krankenhaus/<int:kh_id>/incoming")
+def get_krankenhaus_incoming(kh_id: int):
+    """Patienten die bei dieser Klinik ankommen, sortiert nach Ankunftszeit."""
+    q = (
+        db.session.query(Patient, TransportAuftrag)
+        .outerjoin(TransportAuftrag, TransportAuftrag.patient_id == Patient.id)
+        .filter(Patient.assigned_krankenhaus_id == kh_id)
+        .order_by(TransportAuftrag.ankunft.asc().nulls_last(),
+                  db.case((Patient.sk == "SK1", 1), (Patient.sk == "SK2", 2), else_=3))
+    )
+    out = []
+    for p, t in q.all():
+        out.append({
+            "patient_id": p.id,
+            "external_id": p.external_id,
+            "sk": p.sk,
+            "quelle": p.quelle,
+            "aufenthaltsdauer_tage": p.aufenthaltsdauer_tage,
+            "eingangssichtung": p.eingangssichtung.isoformat() if p.eingangssichtung else None,
+            "transport_id": t.id if t else None,
+            "transportmittel": t.transportmittel if t else None,
+            "abfahrt": t.abfahrt.isoformat() if t and t.abfahrt else None,
+            "ankunft": t.ankunft.isoformat() if t and t.ankunft else None,
+            "distanz_km": t.distanz_km if t else p.distanz_km,
+            "dauer_min": t.dauer_min if t else None,
+        })
+    return jsonify(out)
 
 
 # ===================== Transporte =====================

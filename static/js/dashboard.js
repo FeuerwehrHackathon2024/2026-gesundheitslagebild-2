@@ -489,6 +489,9 @@
     document.getElementById("btn-batch-reset").addEventListener("click", handleBatchReset);
     document.getElementById("btn-toggle-routes").addEventListener("click", toggleRoutes);
 
+    const btnManual = document.getElementById("btn-add-manual");
+    if (btnManual) btnManual.addEventListener("click", handleManualAdd);
+
     // Initial totals
     fetch("/api/simulation/status").then(r => r.json()).then(renderBelegungTotals);
   }
@@ -546,6 +549,34 @@
 
   function setDispatchResult(html) {
     document.getElementById("dispatch-result").innerHTML = html;
+  }
+
+  async function handleManualAdd() {
+    const statusEl = document.getElementById("man-status");
+    const id = document.getElementById("man-id").value.trim();
+    const sk = document.querySelector('input[name="man-sk"]:checked')?.value;
+    if (!sk) return;
+    statusEl.innerHTML = `<span class="text-body-secondary"><i class="bi bi-hourglass-split"></i> Speichere…</span>`;
+    try {
+      const r = await fetch("/api/patients/manual", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sk, external_id: id || null, hub_name: state.hub?.name }),
+      });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error || "Fehler");
+      statusEl.innerHTML = `<span class="text-success"><i class="bi bi-check-circle"></i> ${j.external_id} erfasst (Batch #${j.batch_id}, ${j.batch_total} insg.)</span>`;
+      // Batch-Panel für diesen Manuell-Batch zeigen
+      state.batch = { batch_id: j.batch_id, filename: `Manuell (${j.batch_total})`, hub: state.hub?.name, total: j.batch_total, sk1: 0, sk2: 0, sk3: 0 };
+      // Neu laden für korrekte Counts
+      const list = await fetch("/api/batches").then(r => r.json());
+      const b = list.find(x => x.id === j.batch_id);
+      if (b) state.batch = { batch_id: b.id, filename: b.filename, hub: b.hub_name, total: b.total, sk1: b.sk1, sk2: b.sk2, sk3: b.sk3 };
+      showBatchPanel(state.batch);
+      document.getElementById("man-id").value = "";
+    } catch (err) {
+      statusEl.innerHTML = `<span class="text-danger">${escapeHtml(err.message)}</span>`;
+    }
   }
 
   async function handleUpload(file) {
@@ -633,12 +664,24 @@
       return `
         <tr data-kh="${t.ziel.id}">
           <td><span class="badge sk-badge ${skCls}">${escapeHtml(t.sk || "")}</span></td>
-          <td><span class="font-monospace small">${escapeHtml(t.patient_external_id || ("#" + t.patient_id))}</span></td>
-          <td class="text-truncate" style="max-width: 240px;" title="${escapeHtml(t.ziel.name || "")}">${escapeHtml(t.ziel.name || "")}</td>
+          <td>
+            <a href="/patients/${t.patient_id}" class="font-monospace small text-decoration-none" onclick="event.stopPropagation()">
+              ${escapeHtml(t.patient_external_id || ("#" + t.patient_id))}
+            </a>
+          </td>
+          <td class="text-truncate" style="max-width: 240px;" title="${escapeHtml(t.ziel.name || "")}">
+            <a href="/krankenhaus/${t.ziel.id}" class="text-decoration-none text-body" onclick="event.stopPropagation()">
+              ${escapeHtml(t.ziel.name || "")}
+            </a>
+          </td>
           <td>${escapeHtml(t.ziel.ort || "")}</td>
           <td class="text-end">${t.distanz_km ? t.distanz_km.toFixed(1) : "–"}</td>
           <td class="text-end">${t.dauer_min ? Math.round(t.dauer_min) : "–"}</td>
-          <td><span class="badge bg-secondary">${escapeHtml(t.status || "")}</span></td>
+          <td>
+            <a href="/transports/${t.id}" class="badge bg-danger text-decoration-none" onclick="event.stopPropagation()">
+              <i class="bi bi-file-earmark-text"></i> #${t.id}
+            </a>
+          </td>
         </tr>`;
     }).join("");
 

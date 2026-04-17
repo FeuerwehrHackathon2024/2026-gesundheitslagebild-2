@@ -28,6 +28,21 @@ def patients_page() -> str:
     return render_template("patients.html")
 
 
+@main_bp.get("/patients/<int:patient_id>")
+def patient_detail_page(patient_id: int):
+    return render_template("patient_detail.html", patient_id=patient_id)
+
+
+@main_bp.get("/transports/<int:transport_id>")
+def transport_detail_page(transport_id: int):
+    return render_template("transport_detail.html", transport_id=transport_id)
+
+
+@main_bp.get("/krankenhaus/<int:kh_id>")
+def krankenhaus_detail_page(kh_id: int):
+    return render_template("krankenhaus_detail.html", kh_id=kh_id)
+
+
 @main_bp.get("/belegung")
 def belegung_page() -> str:
     return render_template("belegung.html")

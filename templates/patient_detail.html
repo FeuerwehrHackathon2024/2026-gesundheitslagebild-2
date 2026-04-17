@@ -1,0 +1,152 @@
+{% extends "base.html" %}
+
+{% block title %}Patient · MANV-Dispatch{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+  <a href="/patients" class="text-decoration-none small text-body-secondary">
+    <i class="bi bi-arrow-left"></i> Zurück zur Patientenliste
+  </a>
+
+  <div id="p-header" class="mt-2 mb-3"></div>
+
+  <div class="row g-3">
+    <div class="col-lg-7">
+      <div class="card shadow-sm mb-3">
+        <div class="card-header"><h2 class="h6 mb-0"><i class="bi bi-clock-history"></i> Zeitachse</h2></div>
+        <div class="card-body">
+          <ol class="timeline" id="p-timeline"></ol>
+        </div>
+      </div>
+
+      <div class="card shadow-sm mb-3">
+        <div class="card-header"><h2 class="h6 mb-0"><i class="bi bi-hospital"></i> Ziel-Klinik</h2></div>
+        <div class="card-body" id="p-klinik">—</div>
+      </div>
+    </div>
+
+    <div class="col-lg-5">
+      <div class="card shadow-sm mb-3">
+        <div class="card-header"><h2 class="h6 mb-0"><i class="bi bi-truck"></i> Transportauftrag</h2></div>
+        <div class="card-body" id="p-transport">—</div>
+      </div>
+
+      <div class="card shadow-sm">
+        <div class="card-header"><h2 class="h6 mb-0"><i class="bi bi-geo-alt-fill"></i> Karte</h2></div>
+        <div class="card-body p-0">
+          <div id="p-map" style="height: 340px; border-radius: 0 0 0.375rem 0.375rem;"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const PATIENT_ID = {{ patient_id }};
+(async function () {
+  const esc = s => (s ?? "").toString().replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"})[c]);
+  const fmtDt = s => s ? new Date(s).toLocaleString("de-DE") : "—";
+  const fmtTm = s => s ? new Date(s).toLocaleTimeString("de-DE", {hour:"2-digit", minute:"2-digit"}) : "—";
+
+  const resp = await fetch(`/api/patients/${PATIENT_ID}`);
+  if (!resp.ok) { document.body.innerHTML = "<div class='container py-4'><div class='alert alert-danger'>Patient nicht gefunden.</div></div>"; return; }
+  const p = await resp.json();
+  const skCls = "sk" + (p.sk || "").replace("SK", "");
+  const tmBadge = p.transport?.transportmittel
+    ? `<span class="badge bg-dark">${esc(p.transport.transportmittel)}</span>` : "";
+
+  const statusBadge = p.status === "assigned"
+    ? `<span class="badge bg-success">zugewiesen</span>`
+    : p.status === "unassigned"
+      ? `<span class="badge bg-danger">nicht vermittelbar</span>`
+      : `<span class="badge bg-warning text-dark">wartend</span>`;
+
+  document.getElementById("p-header").innerHTML = `
+    <h1 class="h3 mb-1">
+      <span class="font-monospace">${esc(p.external_id || ("#"+p.id))}</span>
+      <span class="badge sk-badge ${skCls} ms-2 align-middle">${esc(p.sk)}</span>
+      ${tmBadge}
+    </h1>
+    <div class="text-body-secondary">
+      Herkunft <strong>${esc(p.quelle || "—")}</strong> ·
+      Status ${statusBadge} ·
+      Batch #${p.batch_id}
+    </div>`;
+
+  // Timeline
+  const tl = [];
+  if (p.eingangssichtung) tl.push(["bi-clipboard-pulse", "Eingangssichtung", fmtDt(p.eingangssichtung)]);
+  if (p.transportbereit) tl.push(["bi-check2-square", "Transportbereit", fmtDt(p.transportbereit)]);
+  if (p.transport?.abfahrt) tl.push(["bi-truck", `Abfahrt Hub (${p.transport.transportmittel})`, fmtDt(p.transport.abfahrt)]);
+  if (p.transport?.ankunft) tl.push(["bi-hospital", `Ankunft Klinik`, fmtDt(p.transport.ankunft)]);
+  if (p.aufenthaltsdauer_tage) {
+    const entl = p.transport?.ankunft
+      ? new Date(new Date(p.transport.ankunft).getTime() + p.aufenthaltsdauer_tage * 86400000)
+      : null;
+    tl.push(["bi-box-arrow-right", `Voraussichtliche Entlassung (${p.aufenthaltsdauer_tage} Tage)`, entl ? entl.toLocaleDateString("de-DE") : "—"]);
+  }
+  document.getElementById("p-timeline").innerHTML = tl.map(([ic, lbl, val]) => `
+    <li class="timeline-item">
+      <div class="timeline-dot"><i class="bi ${ic}"></i></div>
+      <div class="timeline-content">
+        <div class="fw-semibold">${lbl}</div>
+        <div class="text-body-secondary small">${esc(val)}</div>
+      </div>
+    </li>`).join("");
+
+  // Klinik
+  if (p.ziel) {
+    const z = p.ziel;
+    document.getElementById("p-klinik").innerHTML = `
+      <h5 class="mb-1"><a href="/krankenhaus/${z.id}" class="text-decoration-none text-body">${esc(z.name)}</a></h5>
+      <div class="text-body-secondary small">
+        ${esc([z.strasse, z.hausnummer].filter(Boolean).join(" "))}<br>
+        ${esc([z.plz, z.ort].filter(Boolean).join(" "))} · ${esc(z.bundesland || "")}
+      </div>
+      <div class="mt-2 small">
+        ${z.telefon ? `<i class="bi bi-telephone"></i> ${esc(z.telefon)}<br>` : ""}
+        ${z.website ? `<i class="bi bi-globe"></i> <a href="${esc(z.website)}" target="_blank" rel="noopener">${esc(z.website)}</a>` : ""}
+      </div>
+      <div class="mt-2">
+        <a href="/krankenhaus/${z.id}" class="btn btn-sm btn-outline-danger">
+          <i class="bi bi-arrow-right"></i> Klinik-Sicht öffnen
+        </a>
+      </div>`;
+  } else {
+    document.getElementById("p-klinik").innerHTML = `<em class="text-body-secondary">Noch keine Klinik zugewiesen.</em>`;
+  }
+
+  // Transport
+  if (p.transport) {
+    const t = p.transport;
+    document.getElementById("p-transport").innerHTML = `
+      <div class="mb-2">
+        <span class="badge bg-dark fs-6">${esc(t.transportmittel)}</span>
+        <span class="badge bg-secondary">${esc(t.routing_source || "")}</span>
+      </div>
+      <div class="small">
+        <div class="mb-1"><i class="bi bi-play-fill text-success"></i> <strong>Abfahrt:</strong> ${fmtDt(t.abfahrt)}</div>
+        <div class="mb-1"><i class="bi bi-flag-fill text-danger"></i> <strong>Ankunft:</strong> ${fmtDt(t.ankunft)}</div>
+        <div class="text-body-secondary">${t.distanz_km?.toFixed(1) ?? "–"} km · ${t.dauer_min ? Math.round(t.dauer_min) : "–"} min Fahrtzeit</div>
+      </div>
+      <a href="/transports/${t.id}" class="btn btn-danger btn-sm mt-3 w-100">
+        <i class="bi bi-file-earmark-text-fill"></i> Transportauftrag öffnen
+      </a>`;
+  } else {
+    document.getElementById("p-transport").innerHTML = `<em class="text-body-secondary">Kein Transportauftrag.</em>`;
+  }
+
+  // Karte
+  if (p.ziel) {
+    const mid = [(48.422 + p.ziel.lat) / 2, (9.952 + p.ziel.lon) / 2];
+    const map = L.map("p-map").setView(mid, 8);
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { attribution: "© OSM", maxZoom: 18 }).addTo(map);
+    const hub = L.marker([48.422, 9.952]).addTo(map).bindPopup("Hub Süd · Ulm");
+    const ziel = L.marker([p.ziel.lat, p.ziel.lon]).addTo(map).bindPopup(esc(p.ziel.name));
+    const color = p.sk === "SK1" ? "#b71c1c" : p.sk === "SK2" ? "#f57c00" : "#fbc02d";
+    L.polyline([[48.422, 9.952], [p.ziel.lat, p.ziel.lon]], { color, weight: 3, opacity: 0.7 }).addTo(map);
+    map.fitBounds([[48.422, 9.952], [p.ziel.lat, p.ziel.lon]], { padding: [40, 40] });
+  }
+})();
+</script>
+{% endblock %}

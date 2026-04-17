@@ -15,6 +15,7 @@ from sqlalchemy import and_, or_
 
 from .extensions import db
 from .here_client import fetch_route
+from .ivena_mapping import SK_TRANSPORTMITTEL as IVENA_TRANSPORTMITTEL
 from .models import (
     Hub,
     Krankenhaus,
@@ -301,7 +302,38 @@ def dispatch_batch(batch: PatientenBatch, hub: Hub, use_here: bool = True) -> Di
         col = f"belegung_{p.sk.lower()}"
         setattr(target_bel, col, getattr(target_bel, col) + 1)
 
-        # Transportauftrag
+        # Route: HERE wenn Key da, sonst Haversine-Schätzung
+        if use_here:
+            route = fetch_route((hub.lat, hub.lon), (target.lat, target.lon))
+            distanz_km = route.distance_km
+            dauer_min = route.duration_min
+            here_polyline = route.polyline
+            here_actions_json = (
+                None if not route.actions
+                else __import__("json").dumps(route.actions, ensure_ascii=False)
+            )
+            route_geojson = (
+                None if not route.geojson
+                else __import__("json").dumps(route.geojson)
+            )
+            routing_source = route.source
+        else:
+            distanz_km = target_dist
+            # grob 70 km/h, 30% Umwegfaktor
+            dauer_min = round(distanz_km / 70 * 60 * 1.3, 1)
+            here_polyline = None
+            here_actions_json = None
+            route_geojson = None
+            routing_source = "haversine"
+
+        # Transportmittel + Zeiten
+        tm_info = IVENA_TRANSPORTMITTEL.get(p.sk, {})
+        tm_code = tm_info.get("code", "KTW")
+        pickup_offset_min = TRANSPORTMITTEL_PICKUP_OFFSET_MIN.get(tm_code, 5)
+        base_time = p.transportbereit or p.eingangssichtung or datetime.utcnow()
+        abfahrt_dt = base_time + timedelta(minutes=pickup_offset_min)
+        ankunft_dt = abfahrt_dt + timedelta(minutes=dauer_min or 0)
+
         t = TransportAuftrag(
             patient_id=p.id,
             batch_id=batch.id,
@@ -312,12 +344,19 @@ def dispatch_batch(batch: PatientenBatch, hub: Hub, use_here: bool = True) -> Di
             ziel_lat=target.lat,
             ziel_lon=target.lon,
             sk=p.sk,
-            distanz_km=target_dist,
-            dauer_min=round(target_dist / 80 * 60, 1) if target_dist else None,  # grob 80 km/h
+            distanz_km=distanz_km,
+            dauer_min=dauer_min,
+            transportmittel=tm_code,
+            abfahrt=abfahrt_dt,
+            ankunft=ankunft_dt,
+            here_polyline=here_polyline,
+            here_instructions_json=here_actions_json,
+            route_geojson=route_geojson,
+            routing_source=routing_source,
         )
         db.session.add(t)
         transports.append(t)
-        distances.append(target_dist)
+        distances.append(distanz_km)
         assigned += 1
 
     batch.status = "dispatched"

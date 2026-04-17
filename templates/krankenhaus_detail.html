@@ -1,0 +1,170 @@
+{% extends "base.html" %}
+
+{% block title %}Klinik-Sicht · MANV-Dispatch{% endblock %}
+
+{% block head_extra %}
+<style>
+@media print { .no-print { display:none !important; } .app-navbar, .app-footer { display:none !important; } }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+  <div class="d-flex justify-content-between align-items-start no-print">
+    <a href="/belegung" class="text-decoration-none small text-body-secondary">
+      <i class="bi bi-arrow-left"></i> Zurück zur Belegung
+    </a>
+    <button class="btn btn-sm btn-outline-secondary" onclick="window.print()">
+      <i class="bi bi-printer"></i> Drucken (Empfangs-Team)
+    </button>
+  </div>
+
+  <div id="k-header" class="mt-2 mb-3"></div>
+
+  <div class="row g-3">
+    <div class="col-lg-4">
+      <div class="card shadow-sm mb-3">
+        <div class="card-header"><h2 class="h6 mb-0"><i class="bi bi-info-circle"></i> Klinik</h2></div>
+        <div class="card-body" id="k-info">—</div>
+      </div>
+
+      <div class="card shadow-sm mb-3">
+        <div class="card-header"><h2 class="h6 mb-0"><i class="bi bi-bar-chart-fill"></i> Aktuelle Belegung</h2></div>
+        <div class="card-body" id="k-belegung">—</div>
+      </div>
+
+      <div class="card shadow-sm">
+        <div class="card-header"><h2 class="h6 mb-0"><i class="bi bi-geo-alt-fill"></i> Karte</h2></div>
+        <div class="card-body p-0"><div id="k-map" style="height:260px;"></div></div>
+      </div>
+    </div>
+
+    <div class="col-lg-8">
+      <div class="card shadow-sm">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <h2 class="h6 mb-0"><i class="bi bi-people-fill"></i> Eingehende Patienten</h2>
+          <span class="small text-body-secondary" id="k-incoming-count"></span>
+        </div>
+        <div class="card-body p-0">
+          <div class="table-responsive">
+            <table class="table mb-0 align-middle">
+              <thead class="table-light">
+                <tr>
+                  <th>Ankunft</th>
+                  <th>SK</th>
+                  <th>Patient-ID</th>
+                  <th>Herkunft</th>
+                  <th>Transport</th>
+                  <th class="text-end">Entf.</th>
+                  <th class="text-end">Aufenthalt</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="k-incoming">
+                <tr><td colspan="8" class="text-center text-body-secondary py-4">
+                  <span class="spinner-border spinner-border-sm me-1"></span> Lade…
+                </td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const KH_ID = {{ kh_id }};
+(async function () {
+  const esc = s => (s ?? "").toString().replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"})[c]);
+  const fmtDt = s => s ? new Date(s).toLocaleString("de-DE") : "—";
+  const fmtTm = s => s ? new Date(s).toLocaleTimeString("de-DE", {hour:"2-digit", minute:"2-digit"}) : "—";
+
+  const [k, inc] = await Promise.all([
+    fetch(`/api/krankenhaus/${KH_ID}`).then(r => r.json()),
+    fetch(`/api/krankenhaus/${KH_ID}/incoming`).then(r => r.json()),
+  ]);
+
+  document.getElementById("k-header").innerHTML = `
+    <h1 class="h3 mb-1">${esc(k.name)}</h1>
+    <div class="text-body-secondary">
+      ${esc([k.strasse, k.hausnummer].filter(Boolean).join(" "))},
+      ${esc([k.plz, k.ort].filter(Boolean).join(" "))} · ${esc(k.bundesland || "")}
+      ${k.sk_max ? `<span class="badge sk-badge sk${k.sk_max.replace("SK","")} ms-2">${esc(k.sk_max)}</span>` : ""}
+      ${k.ausgeschlossen ? `<span class="badge bg-danger ms-1"><i class="bi bi-exclamation-octagon-fill"></i> AUSGESCHLOSSEN${k.ausschluss_grund ? ": " + esc(k.ausschluss_grund) : ""}</span>` : ""}
+    </div>`;
+
+  // Info
+  const flags = [
+    [k.hat_intensivmedizin, "Intensivmedizin"],
+    [k.hat_notaufnahme, "Notaufnahme"],
+    [k.hat_bg_zulassung, "BG-Zulassung"],
+    [k.hat_radiologie, "Radiologie"],
+  ].filter(([on]) => on).map(([,l]) => `<span class="badge bg-secondary me-1">${l}</span>`).join(" ");
+  document.getElementById("k-info").innerHTML = `
+    <div class="small">
+      ${k.betten ? `<div><strong>${k.betten}</strong> Betten</div>` : ""}
+      ${k.universitaet ? `<div><i class="bi bi-mortarboard"></i> ${esc(k.universitaet)}</div>` : ""}
+      ${k.telefon ? `<div class="mt-1"><i class="bi bi-telephone"></i> ${esc(k.telefon)}</div>` : ""}
+      ${k.website ? `<div><i class="bi bi-globe"></i> <a href="${esc(k.website)}" target="_blank" rel="noopener">Website</a></div>` : ""}
+      ${flags ? `<div class="mt-2">${flags}</div>` : ""}
+    </div>`;
+
+  // Belegung mit Bars
+  if (k.belegung) {
+    const b = k.belegung;
+    const row = (sk, bel, cap) => {
+      const pct = cap ? Math.round(bel / cap * 100) : 0;
+      const color = sk === "SK1" ? "#b71c1c" : sk === "SK2" ? "#f57c00" : "#fbc02d";
+      const warn = pct >= 100 ? "text-danger fw-bold" : pct >= 80 ? "text-warning fw-bold" : "";
+      return `
+        <div class="mb-2">
+          <div class="d-flex justify-content-between small">
+            <span><span class="badge sk-badge sk${sk.replace("SK","")}">${sk}</span></span>
+            <span class="${warn}">${bel} / ${cap} (${pct}%)</span>
+          </div>
+          <div class="progress" style="height:10px">
+            <div class="progress-bar" style="width:${Math.min(pct,100)}%; background:${color}"></div>
+          </div>
+        </div>`;
+    };
+    document.getElementById("k-belegung").innerHTML =
+      row("SK1", b.belegung_sk1, b.kapazitaet_sk1) +
+      row("SK2", b.belegung_sk2, b.kapazitaet_sk2) +
+      row("SK3", b.belegung_sk3, b.kapazitaet_sk3) +
+      (b.vorbelegung_prozent ? `<div class="small text-body-secondary mt-2">Simulierte Grundbelegung: ${b.vorbelegung_prozent}%</div>` : "");
+  } else {
+    document.getElementById("k-belegung").innerHTML = `<em class="text-body-secondary small">Noch keine Belegungs-Daten.</em>`;
+  }
+
+  // Karte
+  if (k.lat != null && k.lon != null) {
+    const map = L.map("k-map").setView([k.lat, k.lon], 12);
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { attribution: "© OSM" }).addTo(map);
+    L.marker([k.lat, k.lon]).addTo(map).bindPopup(esc(k.name));
+  }
+
+  // Eingehende Patienten
+  document.getElementById("k-incoming-count").textContent = `${inc.length} Patienten`;
+  const tbody = document.getElementById("k-incoming");
+  if (!inc.length) {
+    tbody.innerHTML = `<tr><td colspan="8" class="text-center text-body-secondary py-4">Aktuell keine eingehenden Patienten.</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = inc.map(i => {
+    const skCls = "sk" + (i.sk || "").replace("SK", "");
+    return `
+      <tr>
+        <td class="fw-semibold">${fmtDt(i.ankunft)}</td>
+        <td><span class="badge sk-badge ${skCls}">${esc(i.sk || "")}</span></td>
+        <td><a href="/patients/${i.patient_id}" class="font-monospace small text-decoration-none">${esc(i.external_id || "#"+i.patient_id)}</a></td>
+        <td class="small">${esc(i.quelle || "")}</td>
+        <td>${i.transportmittel ? `<span class="badge bg-dark">${esc(i.transportmittel)}</span>` : "—"}</td>
+        <td class="text-end small">${i.distanz_km != null ? i.distanz_km.toFixed(1) + " km" : "–"}</td>
+        <td class="text-end small">${i.aufenthaltsdauer_tage ?? "–"} Tage</td>
+        <td>${i.transport_id ? `<a href="/transports/${i.transport_id}" class="btn btn-sm btn-outline-danger"><i class="bi bi-file-earmark-text"></i></a>` : ""}</td>
+      </tr>`;
+  }).join("");
+})();
+</script>
+{% endblock %}

@@ -294,3 +294,41 @@ html, body { height: 100%; }
 @media (max-width: 991.98px) {
   .dashboard-map { height: 55vh; }
 }
+
+/* --- Timeline (Patient-Detail) --- */
+.timeline {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  position: relative;
+}
+.timeline::before {
+  content: "";
+  position: absolute;
+  left: 14px;
+  top: 6px;
+  bottom: 6px;
+  width: 2px;
+  background: #dee2e6;
+}
+.timeline-item {
+  position: relative;
+  padding-left: 40px;
+  padding-bottom: 14px;
+}
+.timeline-item:last-child { padding-bottom: 0; }
+.timeline-dot {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--brand);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+}
+.timeline-content .fw-semibold { font-size: 0.92rem; }

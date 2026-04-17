@@ -1,0 +1,212 @@
+{% extends "base.html" %}
+
+{% block title %}Transportauftrag · MANV-Dispatch{% endblock %}
+
+{% block head_extra %}
+<style>
+@media print {
+  .no-print { display: none !important; }
+  body { background: white !important; }
+  .card { box-shadow: none !important; border: 1px solid #ccc !important; }
+  .app-navbar, .app-footer { display: none !important; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+  <div class="d-flex justify-content-between align-items-start no-print">
+    <a href="/patients" class="text-decoration-none small text-body-secondary">
+      <i class="bi bi-arrow-left"></i> Zurück
+    </a>
+    <div class="d-flex gap-2">
+      <button class="btn btn-sm btn-outline-secondary" onclick="window.print()">
+        <i class="bi bi-printer"></i> Drucken
+      </button>
+      <button class="btn btn-sm btn-outline-secondary" id="btn-share">
+        <i class="bi bi-share"></i> Link kopieren
+      </button>
+    </div>
+  </div>
+
+  <div id="t-header" class="mt-2 mb-3"></div>
+
+  <div class="row g-3">
+    <div class="col-lg-7">
+      <div class="card shadow-sm mb-3">
+        <div class="card-header"><h2 class="h6 mb-0"><i class="bi bi-clock"></i> Zeitplan</h2></div>
+        <div class="card-body" id="t-zeitplan"></div>
+      </div>
+
+      <div class="row g-3">
+        <div class="col-md-6">
+          <div class="card shadow-sm h-100">
+            <div class="card-header"><h2 class="h6 mb-0"><i class="bi bi-geo-alt-fill text-danger"></i> Start (Hub)</h2></div>
+            <div class="card-body" id="t-start">—</div>
+          </div>
+        </div>
+        <div class="col-md-6">
+          <div class="card shadow-sm h-100">
+            <div class="card-header"><h2 class="h6 mb-0"><i class="bi bi-hospital-fill text-success"></i> Ziel (Klinik)</h2></div>
+            <div class="card-body" id="t-ziel">—</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card shadow-sm mt-3">
+        <div class="card-header"><h2 class="h6 mb-0"><i class="bi bi-person-fill"></i> Patient</h2></div>
+        <div class="card-body" id="t-patient">—</div>
+      </div>
+
+      <div class="card shadow-sm mt-3" id="actions-card" style="display:none;">
+        <div class="card-header"><h2 class="h6 mb-0"><i class="bi bi-signpost-2-fill"></i> Fahrtanweisungen</h2></div>
+        <div class="card-body">
+          <ol class="mb-0 small" id="t-actions"></ol>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-lg-5">
+      <div class="card shadow-sm">
+        <div class="card-header"><h2 class="h6 mb-0"><i class="bi bi-map"></i> Tour</h2></div>
+        <div class="card-body p-0">
+          <div id="t-map" style="height: 540px; border-radius: 0 0 0.375rem 0.375rem;"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const TRANSPORT_ID = {{ transport_id }};
+(async function () {
+  const esc = s => (s ?? "").toString().replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"})[c]);
+  const fmtDt = s => s ? new Date(s).toLocaleString("de-DE") : "—";
+
+  const resp = await fetch(`/api/transports/${TRANSPORT_ID}`);
+  if (!resp.ok) { document.body.innerHTML = "<div class='container py-4'><div class='alert alert-danger'>Transportauftrag nicht gefunden.</div></div>"; return; }
+  const t = await resp.json();
+
+  const skCls = "sk" + (t.sk || "").replace("SK", "");
+
+  document.getElementById("t-header").innerHTML = `
+    <h1 class="h3 mb-1">
+      <i class="bi bi-file-earmark-text-fill text-danger"></i>
+      Transportauftrag #${t.id}
+      <span class="badge sk-badge ${skCls} ms-2 align-middle">${esc(t.sk)}</span>
+      <span class="badge bg-dark ms-1 align-middle">${esc(t.transportmittel || "")}</span>
+      <span class="badge bg-secondary ms-1 align-middle small">${esc(t.routing_source || "")}</span>
+    </h1>
+    <div class="text-body-secondary small">Erzeugt: ${fmtDt(t.erzeugt_am)} · Status: <strong>${esc(t.status)}</strong></div>`;
+
+  // Zeitplan
+  const dist = t.distanz_km?.toFixed(1) ?? "–";
+  const dauer = t.dauer_min ? Math.round(t.dauer_min) : "–";
+  document.getElementById("t-zeitplan").innerHTML = `
+    <div class="row text-center">
+      <div class="col-4 border-end">
+        <div class="text-body-secondary small">Abfahrt</div>
+        <div class="h5 mb-0">${fmtDt(t.abfahrt)}</div>
+      </div>
+      <div class="col-4 border-end">
+        <div class="text-body-secondary small">Ankunft</div>
+        <div class="h5 mb-0">${fmtDt(t.ankunft)}</div>
+      </div>
+      <div class="col-4">
+        <div class="text-body-secondary small">Fahrt</div>
+        <div class="h5 mb-0">${dist} km · ${dauer} min</div>
+      </div>
+    </div>`;
+
+  // Start
+  document.getElementById("t-start").innerHTML = `
+    <h6 class="mb-1">${esc(t.hub?.name || "Hub")}</h6>
+    <div class="small text-body-secondary">${esc(t.hub?.ort || "")}</div>
+    <div class="small text-body-secondary">
+      <i class="bi bi-geo"></i> ${t.hub?.lat?.toFixed(4)}, ${t.hub?.lon?.toFixed(4)}
+    </div>`;
+
+  // Ziel
+  if (t.ziel) {
+    const z = t.ziel;
+    document.getElementById("t-ziel").innerHTML = `
+      <h6 class="mb-1"><a href="/krankenhaus/${z.id}" class="text-decoration-none text-body">${esc(z.name)}</a></h6>
+      <div class="small text-body-secondary">
+        ${esc([z.strasse, z.hausnummer].filter(Boolean).join(" "))}<br>
+        ${esc([z.plz, z.ort].filter(Boolean).join(" "))}
+      </div>
+      ${z.telefon ? `<div class="small mt-1"><i class="bi bi-telephone"></i> ${esc(z.telefon)}</div>` : ""}
+      <div class="small text-body-secondary mt-1">
+        <i class="bi bi-geo"></i> ${z.lat?.toFixed(4)}, ${z.lon?.toFixed(4)}
+      </div>`;
+  }
+
+  // Patient
+  if (t.patient) {
+    const p = t.patient;
+    document.getElementById("t-patient").innerHTML = `
+      <div class="row">
+        <div class="col-md-6">
+          <div class="small text-body-secondary">Patient-ID</div>
+          <h5><a href="/patients/${p.id}" class="font-monospace text-decoration-none">${esc(p.external_id || "#"+p.id)}</a></h5>
+        </div>
+        <div class="col-md-3">
+          <div class="small text-body-secondary">Sichtungskategorie</div>
+          <h5><span class="badge sk-badge ${skCls}">${esc(p.sk)}</span></h5>
+        </div>
+        <div class="col-md-3">
+          <div class="small text-body-secondary">Aufenthalt</div>
+          <h5>${p.aufenthaltsdauer_tage ?? "–"} Tage</h5>
+        </div>
+      </div>
+      <div class="small text-body-secondary mt-2">
+        Herkunft: <strong>${esc(p.quelle || "—")}</strong> ·
+        Sichtung: ${fmtDt(p.eingangssichtung)} ·
+        Transportbereit: ${fmtDt(p.transportbereit)}
+      </div>`;
+  }
+
+  // Karte
+  const map = L.map("t-map");
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { attribution: "© OSM", maxZoom: 18 }).addTo(map);
+
+  const bounds = [];
+  if (t.hub?.lat != null) {
+    const m = L.marker([t.hub.lat, t.hub.lon], {
+      icon: L.divIcon({ html: '<div class="hub-pin"><i class="bi bi-hospital-fill"></i></div>', className: "", iconSize: [46, 46], iconAnchor: [23, 23] })
+    }).addTo(map).bindPopup(`Hub: ${esc(t.hub.name || "")}`);
+    bounds.push([t.hub.lat, t.hub.lon]);
+  }
+  if (t.ziel?.lat != null) {
+    L.marker([t.ziel.lat, t.ziel.lon]).addTo(map).bindPopup(`Ziel: ${esc(t.ziel.name || "")}`);
+    bounds.push([t.ziel.lat, t.ziel.lon]);
+  }
+  const routeColor = t.sk === "SK1" ? "#b71c1c" : t.sk === "SK2" ? "#f57c00" : "#fbc02d";
+  if (t.route_geojson?.coordinates?.length) {
+    const latlngs = t.route_geojson.coordinates.map(([lon, lat]) => [lat, lon]);
+    L.polyline(latlngs, { color: routeColor, weight: 5, opacity: 0.8 }).addTo(map);
+  } else if (bounds.length === 2) {
+    L.polyline(bounds, { color: routeColor, weight: 3, opacity: 0.7, dashArray: "6,6" }).addTo(map);
+  }
+  if (bounds.length) map.fitBounds(bounds, { padding: [40, 40] });
+
+  // Aktionen
+  if (t.actions?.length) {
+    document.getElementById("actions-card").style.display = "";
+    const ol = document.getElementById("t-actions");
+    ol.innerHTML = t.actions.map(a => `
+      <li class="mb-1">${esc(a.instruction || a.action || "")}
+      ${a.length ? `<span class="text-body-secondary small"> (${a.length} m)</span>` : ""}</li>`).join("");
+  }
+
+  // Share button
+  document.getElementById("btn-share").addEventListener("click", async () => {
+    try { await navigator.clipboard.writeText(location.href);
+      const b = document.getElementById("btn-share");
+      b.innerHTML = '<i class="bi bi-check2"></i> Kopiert!';
+      setTimeout(() => b.innerHTML = '<i class="bi bi-share"></i> Link kopieren', 1500);
+    } catch (e) { prompt("Link:", location.href); }
+  });
+})();
+</script>
+{% endblock %}
