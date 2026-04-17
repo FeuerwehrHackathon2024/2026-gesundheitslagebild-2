@@ -16,7 +16,11 @@ from .models import Hub, Krankenhaus
 
 log = logging.getLogger(__name__)
 
-CSV_PATH = BASE_DIR / "data" / "krankenhaeuser_merged.csv"
+_DEDUP_PATH = BASE_DIR / "data" / "krankenhaeuser_dedup.csv"
+_MERGED_PATH = BASE_DIR / "data" / "krankenhaeuser_merged.csv"
+# Bevorzuge dedup-CSV wenn vorhanden (2.081 echte Akut-Kliniken),
+# Fallback auf ungemerged (4.420 Zeilen, enthält Duplikate).
+CSV_PATH = _DEDUP_PATH if _DEDUP_PATH.exists() else _MERGED_PATH
 
 _TRUE = {"true", "ja", "1", "t", "yes", "y"}
 _FALSE = {"false", "nein", "0", "f", "no", "n"}

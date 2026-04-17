@@ -1,4 +1,12 @@
-# Flask + SQLAlchemy Skeleton
+# 2026-gesundheitslagebild — MANV-Dispatch
+
+Prototyp aus dem Feuerwehr-Hackathon 2026: Verteilung von Verletzten aus
+Hub Süd (Ulm) auf Krankenhäuser unter Berücksichtigung von Sichtungs-
+kategorien (SK1–3), Versorgungsfähigkeit und Bettenbelegung.
+
+---
+
+## Flask + SQLAlchemy Skeleton
 
 This project now follows a generic Flask app-factory structure with SQLAlchemy and Flask-Migrate.
 
@@ -85,4 +93,3 @@ Herkunft (`merge_source`): `csv+db` (1.562) · `db_only` (2.200) · `csv_only` (
 
 - **Team-VM**: `185.181.169.154` · user `ubuntu` · Ubuntu 24.04 · 4 CPU / 8 GB RAM
 - Zugang über SSH-Key `team01` (nicht im Repo, gesichert beim Teamleiter)
-

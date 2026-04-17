@@ -73,3 +73,9 @@ pgdata/
 # Raw intermediate export (wird über Script neu gezogen)
 data/krankenhaeuser_db.csv
 
+# Repo-Info + interne Notizen
+git.txt
+/IP
+/team01
+/team01.pub
+
