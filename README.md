@@ -1,4 +1,4 @@
-# 2026-gesundheitslagebild — MANV-Dispatch
+# 2026-gesundheitslagebild-2 — MANV-Dispatch
 
 Prototyp aus dem Feuerwehr-Hackathon 2026: Verteilung von Verletzten aus
 Hub Süd (Ulm) auf Krankenhäuser unter Berücksichtigung von Sichtungs-

@@ -25,6 +25,7 @@ services:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-hackathon}:${POSTGRES_PASSWORD:-hackathon_dev}@db:5432/${POSTGRES_DB:-hackathon}
       SECRET_KEY: ${SECRET_KEY:-change-me-in-env}
       FLASK_ENV: production
+      HERE_API_KEY: ${HERE_API_KEY:-}
     depends_on:
       db:
         condition: service_healthy
