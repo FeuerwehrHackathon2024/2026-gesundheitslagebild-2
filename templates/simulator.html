@@ -1,0 +1,173 @@
+{% extends "base.html" %}
+
+{% block title %}Simulator · XLSX-Generator{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+  <div class="row justify-content-center">
+    <div class="col-lg-8">
+      <a href="/" class="text-decoration-none small text-body-secondary">
+        <i class="bi bi-arrow-left"></i> Zurück zum Dashboard
+      </a>
+
+      <h1 class="h3 mb-3 mt-2">
+        <i class="bi bi-sliders2 text-danger"></i> MANV-Patienten-Simulator
+      </h1>
+      <p class="text-body-secondary">
+        Erzeugt eine Excel-Datei im IVENA-Format mit zufällig verteilten Patienten über den gewählten Zeitraum.
+        Die Datei kann direkt in die Dispatch-Anwendung hochgeladen werden.
+      </p>
+
+      <form id="sim-form" class="card card-body shadow-sm">
+        <div class="row g-3">
+          <div class="col-md-4">
+            <label class="form-label fw-semibold">SK1 (vital gefährdet)</label>
+            <input type="number" min="0" class="form-control" id="sim-sk1" value="30" required>
+            <div class="form-text">Aufenthaltsdauer: 5 Tage</div>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label fw-semibold">SK2 (schwer verletzt)</label>
+            <input type="number" min="0" class="form-control" id="sim-sk2" value="70" required>
+            <div class="form-text">Aufenthaltsdauer: 3 Tage</div>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label fw-semibold">SK3 (leicht verletzt)</label>
+            <input type="number" min="0" class="form-control" id="sim-sk3" value="150" required>
+            <div class="form-text">Aufenthaltsdauer: 1 Tag</div>
+          </div>
+        </div>
+
+        <div class="row g-3 mt-2">
+          <div class="col-md-4">
+            <label class="form-label fw-semibold">Start-Datum</label>
+            <input type="date" class="form-control" id="sim-start" required>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label fw-semibold">Zeitraum (Tage)</label>
+            <input type="number" min="1" max="14" class="form-control" id="sim-days" value="3" required>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label fw-semibold">Herkunft / Hub</label>
+            <select class="form-select" id="sim-hub" required>
+              <option value="Hub Süd" selected>Hub Süd (Ulm)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="row g-3 mt-2">
+          <div class="col-md-4">
+            <label class="form-label fw-semibold">Ankunft ab (Stunde)</label>
+            <input type="number" min="0" max="23" class="form-control" id="sim-start-hour" value="8">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label fw-semibold">Ankunft bis (Stunde)</label>
+            <input type="number" min="0" max="23" class="form-control" id="sim-end-hour" value="20">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label fw-semibold">Seed (optional, für Reproduzierbarkeit)</label>
+            <input type="number" class="form-control" id="sim-seed" placeholder="leer = zufällig">
+          </div>
+        </div>
+
+        <hr class="my-3">
+
+        <div class="d-flex justify-content-between align-items-center">
+          <div id="sim-summary" class="text-body-secondary">
+            Gesamt: <strong id="sim-total">250</strong> Patienten über <strong id="sim-days-out">3</strong> Tage
+          </div>
+          <div class="d-flex gap-2">
+            <button type="button" class="btn btn-outline-secondary" id="btn-preset-250">
+              Preset: 250 / Tag
+            </button>
+            <button type="submit" class="btn btn-danger">
+              <i class="bi bi-file-earmark-excel-fill"></i> XLSX generieren
+            </button>
+          </div>
+        </div>
+      </form>
+
+      <div class="alert alert-info mt-4 small">
+        <strong>Format:</strong> Spalten <code>ID</code>, <code>SK</code>, <code>Datum</code>, <code>Eingangssichtung um</code>, <code>Transportbereitschaft gesetzt um</code>, <code>Quelle</code> —
+        kompatibel mit IVENA-Export + zusätzlicher Hub-Spalte.
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  const today = new Date().toISOString().slice(0, 10);
+  document.getElementById("sim-start").value = today;
+
+  const ids = ["sim-sk1", "sim-sk2", "sim-sk3", "sim-days"];
+  function updateSummary() {
+    const sk1 = Number(document.getElementById("sim-sk1").value) || 0;
+    const sk2 = Number(document.getElementById("sim-sk2").value) || 0;
+    const sk3 = Number(document.getElementById("sim-sk3").value) || 0;
+    const days = Number(document.getElementById("sim-days").value) || 0;
+    document.getElementById("sim-total").textContent = sk1 + sk2 + sk3;
+    document.getElementById("sim-days-out").textContent = days;
+  }
+  ids.forEach(id => document.getElementById(id).addEventListener("input", updateSummary));
+
+  document.getElementById("btn-preset-250").addEventListener("click", () => {
+    document.getElementById("sim-sk1").value = 30;
+    document.getElementById("sim-sk2").value = 70;
+    document.getElementById("sim-sk3").value = 150;
+    document.getElementById("sim-days").value = 1;
+    updateSummary();
+  });
+
+  // Hubs nachladen
+  fetch("/api/hubs").then(r => r.json()).then(hubs => {
+    const sel = document.getElementById("sim-hub");
+    sel.innerHTML = "";
+    hubs.forEach(h => {
+      const o = document.createElement("option");
+      o.value = h.name;
+      o.textContent = `${h.name} (${h.ort || ""})`;
+      sel.appendChild(o);
+    });
+  });
+
+  document.getElementById("sim-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const body = {
+      sk1: Number(document.getElementById("sim-sk1").value) || 0,
+      sk2: Number(document.getElementById("sim-sk2").value) || 0,
+      sk3: Number(document.getElementById("sim-sk3").value) || 0,
+      start_date: document.getElementById("sim-start").value,
+      days: Number(document.getElementById("sim-days").value) || 1,
+      hub_name: document.getElementById("sim-hub").value,
+      start_hour: Number(document.getElementById("sim-start-hour").value),
+      end_hour: Number(document.getElementById("sim-end-hour").value),
+      seed: document.getElementById("sim-seed").value ? Number(document.getElementById("sim-seed").value) : null,
+    };
+    const btn = e.submitter;
+    btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Generiere…';
+    try {
+      const resp = await fetch("/simulator/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!resp.ok) throw new Error("HTTP " + resp.status);
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+      a.href = url;
+      a.download = `manv_simulation_${body.sk1 + body.sk2 + body.sk3}p_${body.days}t_${stamp}.xlsx`;
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      alert("Fehler: " + err.message);
+    } finally {
+      btn.disabled = false; btn.innerHTML = '<i class="bi bi-file-earmark-excel-fill"></i> XLSX generieren';
+    }
+  });
+
+  updateSummary();
+})();
+</script>
+{% endblock %}

@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from sqlalchemy import inspect
-from sqlalchemy.exc import OperationalError
+from sqlalchemy.exc import OperationalError, ProgrammingError, DatabaseError
 
 from .config import BASE_DIR
 from .extensions import db
@@ -169,14 +169,28 @@ def seed_if_empty(app) -> None:
     """In create_app() aufzurufen: füllt Tabellen nur wenn leer."""
     with app.app_context():
         try:
+            _ensure_table_exists()
+        except Exception as exc:  # noqa: BLE001
+            app.logger.warning("DB nicht erreichbar beim Auto-Seed: %s", exc)
+            return
+
+        try:
             count = db.session.query(Krankenhaus).count()
-        except OperationalError:
+        except (OperationalError, ProgrammingError, DatabaseError):
+            db.session.rollback()
             count = 0
+
         if count == 0:
-            inserted = seed_krankenhaus(force=False)
-            if inserted:
-                app.logger.info("Auto-Seed: %d Krankenhäuser importiert.", inserted)
+            try:
+                inserted = seed_krankenhaus(force=False)
+                if inserted:
+                    app.logger.info("Auto-Seed: %d Krankenhäuser importiert.", inserted)
+            except Exception as exc:  # noqa: BLE001
+                db.session.rollback()
+                app.logger.error("Krankenhaus-Seed fehlgeschlagen: %s", exc)
+
         try:
             seed_hubs_if_empty()
-        except OperationalError:
-            pass
+        except (OperationalError, ProgrammingError, DatabaseError) as exc:
+            db.session.rollback()
+            app.logger.warning("Hub-Seed übersprungen: %s", exc)
