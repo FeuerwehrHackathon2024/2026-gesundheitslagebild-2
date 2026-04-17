@@ -233,6 +233,10 @@
               wurden aus welchem Ring versorgt?
             </div>
             <div id="tc-rings"></div>
+
+            <hr class="my-3">
+            <div class="small fw-semibold mb-1"><i class="bi bi-map"></i> Auf der Karte um den Hub</div>
+            <div id="tc-ring-map" style="height: 260px; border-radius: 8px;"></div>
           </div>
         </div>
       </div>
@@ -515,24 +519,92 @@
     }).join("");
   }
 
-  function renderRings(usage) {
+  let ringMap = null;
+  let topKlinikenMarkers = null;
+
+  function renderRings(usage, topKliniken = [], hubCoords = [48.422, 9.952]) {
     const rings = [10, 30, 50, 70, 100, 150, 250, 500, 1000];
     const total = Object.values(usage).reduce((a, b) => a + b, 0) || 1;
     const host = document.getElementById("tc-rings");
+    const ringColors = {10:"#2e7d32", 30:"#66bb6a", 50:"#f9a825", 70:"#f57c00",
+                        100:"#e65100", 150:"#d84315", 250:"#b71c1c", 500:"#7b1fa2", 1000:"#4a148c"};
     host.innerHTML = rings.map(r => {
       const n = usage[r] || 0;
       const pct = (n / total * 100);
+      const color = ringColors[r] || "#c62828";
       return `
         <div class="mb-2">
           <div class="small d-flex justify-content-between">
-            <span>≤ ${r} km</span>
+            <span><span class="d-inline-block rounded-circle me-1" style="width:8px;height:8px;background:${color};vertical-align:middle;"></span>≤ ${r} km</span>
             <span><strong>${n}</strong> Patienten · ${pct.toFixed(0)}%</span>
           </div>
           <div class="progress" style="height: 10px;">
-            <div class="progress-bar" style="width:${pct}%; background:#c62828;"></div>
+            <div class="progress-bar" style="width:${pct}%; background:${color};"></div>
           </div>
         </div>`;
     }).join("");
+
+    // Karte: Hub im Zentrum, konzentrische Kreise nach genutzten Ringen
+    if (!ringMap) {
+      ringMap = L.map("tc-ring-map").setView(hubCoords, 7);
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        attribution: "© OSM", maxZoom: 18,
+      }).addTo(ringMap);
+    } else {
+      ringMap.eachLayer(l => {
+        if (l instanceof L.TileLayer) return;
+        ringMap.removeLayer(l);
+      });
+    }
+    // Hub-Pin
+    const hubIcon = L.divIcon({
+      html: '<div class="hub-pin" style="width:26px;height:26px;font-size:14px;"><i class="bi bi-hospital-fill"></i></div>',
+      className: "", iconSize: [26, 26], iconAnchor: [13, 13],
+    });
+    L.marker(hubCoords, { icon: hubIcon, zIndexOffset: 1000 }).addTo(ringMap)
+      .bindPopup("Hub Süd · Ulm");
+
+    // Radius-Kreise: nur zeigen wenn in Ring Patienten versorgt wurden
+    let maxUsedRing = 0;
+    for (const r of rings) {
+      const n = usage[r] || 0;
+      const color = ringColors[r];
+      L.circle(hubCoords, {
+        radius: r * 1000,
+        color: color,
+        weight: n > 0 ? 2 : 0.8,
+        dashArray: n > 0 ? "" : "4,6",
+        fillOpacity: n > 0 ? 0.04 : 0,
+        opacity: n > 0 ? 0.8 : 0.3,
+      }).bindPopup(`<strong>≤ ${r} km</strong><br>${n} Patienten versorgt`).addTo(ringMap);
+      if (n > 0) maxUsedRing = r;
+    }
+
+    // Top-Kliniken als Marker mit Größe proportional zu Aufnahmen
+    const maxAufn = Math.max(1, ...topKliniken.map(k => k.aufnahmen));
+    for (const k of topKliniken) {
+      if (!k.lat || !k.lon) continue;
+      const size = Math.max(6, Math.min(22, k.aufnahmen / maxAufn * 22));
+      const cm = L.circleMarker([k.lat, k.lon], {
+        radius: size, color: "#b71c1c", fillColor: "#e65100",
+        fillOpacity: 0.7, weight: 1.5,
+      }).addTo(ringMap);
+      cm.bindPopup(`<strong>${esc(k.name)}</strong><br>
+        <span class="small">${esc(k.ort || "")} · ${(k.distanz_km || 0).toFixed(0)} km</span><br>
+        ${k.aufnahmen} Aufnahmen<br>
+        <a href="/krankenhaus/${k.id}">Klinik-Sicht öffnen</a>`);
+    }
+
+    // Bounds passend zum größten genutzten Ring
+    if (maxUsedRing > 0) {
+      const km = maxUsedRing;
+      const dLat = km / 111;
+      const dLon = km / (111 * Math.cos(hubCoords[0] * Math.PI / 180));
+      ringMap.fitBounds([
+        [hubCoords[0] - dLat, hubCoords[1] - dLon],
+        [hubCoords[0] + dLat, hubCoords[1] + dLon],
+      ], { padding: [10, 10] });
+    }
   }
 
   document.getElementById("tc-run").addEventListener("click", runSimulation);

@@ -1,89 +1,575 @@
 {% extends "base.html" %}
 
-{% block title %}Info · MANV-Dispatch{% endblock %}
+{% block title %}Dokumentation & Demo · MANV-Dispatch{% endblock %}
+
+{% block head_extra %}
+<style>
+.doc-hero {
+  background: linear-gradient(135deg, #c62828 0%, #5d1515 100%);
+  color: #fff; border-radius: 16px; padding: 2rem 2.2rem;
+  margin-bottom: 1.5rem; box-shadow: 0 10px 30px rgba(198,40,40,0.22);
+}
+.doc-hero h1 { font-weight: 800; letter-spacing: -0.01em; }
+.doc-hero .subtitle { opacity: 0.95; font-size: 1.05rem; }
+.doc-chip {
+  display: inline-flex; align-items: center; gap: 4px;
+  background: rgba(255,255,255,0.15); padding: 3px 10px;
+  border-radius: 999px; font-size: 0.82rem; font-weight: 600;
+}
+.doc-toc { position: sticky; top: 76px; }
+.doc-toc a {
+  display: block; padding: 6px 12px; margin: 2px 0;
+  border-radius: 6px; color: #495057;
+  text-decoration: none; font-size: 0.9rem;
+  border-left: 3px solid transparent;
+}
+.doc-toc a:hover { background: #f1f3f5; color: #c62828; }
+.doc-toc a.active { background: #fff5f5; color: #c62828; border-left-color: #c62828; font-weight: 600; }
+.doc-section {
+  background: #fff; border-radius: 14px; padding: 1.5rem 1.8rem;
+  margin-bottom: 1.2rem; box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+  scroll-margin-top: 80px;
+}
+.doc-section h2 {
+  margin-bottom: 1rem; font-weight: 700; color: #212529;
+  border-bottom: 2px solid #c62828; padding-bottom: 0.5rem;
+  display: inline-block;
+}
+.demo-step {
+  display: flex; gap: 1rem; margin-bottom: 1.2rem;
+  padding: 0.9rem; background: #fafbfc; border-radius: 10px;
+  border-left: 4px solid #c62828;
+}
+.demo-step-num {
+  width: 40px; height: 40px; min-width: 40px;
+  border-radius: 50%; background: #c62828; color: #fff;
+  font-weight: 700; font-size: 1.15rem;
+  display: flex; align-items: center; justify-content: center;
+}
+.demo-step h3 { font-size: 1rem; font-weight: 700; margin-bottom: 0.25rem; }
+.demo-step .meta { font-size: 0.78rem; color: #6c757d; margin-bottom: 0.5rem; }
+.demo-step ol { margin: 0; padding-left: 1.3rem; font-size: 0.92rem; }
+.feature-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 0.9rem; }
+.feature-card {
+  background: #fafbfc; border-radius: 10px; padding: 1rem;
+  border-left: 3px solid #c62828; transition: transform 0.15s;
+  text-decoration: none; color: inherit;
+}
+.feature-card:hover { transform: translateY(-2px); color: inherit; box-shadow: 0 4px 10px rgba(0,0,0,0.06); }
+.feature-card h4 { font-size: 0.95rem; font-weight: 700; margin-bottom: 0.3rem; }
+.feature-card .url { font-family: monospace; font-size: 0.78rem; color: #c62828; margin-bottom: 0.35rem; }
+.feature-card p { font-size: 0.82rem; color: #495057; margin: 0; }
+.stat-card {
+  background: #fff; border-radius: 10px; padding: 1rem;
+  text-align: center; border-top: 3px solid #c62828;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+}
+.stat-card .big { font-size: 1.8rem; font-weight: 800; line-height: 1; color: #212529; }
+.stat-card .label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; color: #6c757d; margin-top: 5px; }
+.code-block {
+  background: #212529; color: #e9ecef; padding: 0.9rem 1rem;
+  border-radius: 8px; font-family: 'SFMono-Regular', monospace;
+  font-size: 0.82rem; overflow-x: auto;
+}
+.code-block .hl-comment { color: #6c757d; }
+.code-block .hl-cmd { color: #ffc107; }
+.arch-diagram {
+  background: #fafbfc; border: 1px solid #dee2e6; border-radius: 8px;
+  padding: 1rem; font-family: 'SFMono-Regular', monospace;
+  font-size: 0.78rem; white-space: pre; overflow-x: auto;
+}
+.quick-table { font-size: 0.85rem; }
+.quick-table th { background: #fafbfc; font-size: 0.75rem; text-transform: uppercase; }
+.badge-scope {
+  display: inline-block; padding: 2px 8px; border-radius: 4px;
+  background: #e9ecef; color: #495057; font-size: 0.75rem; font-weight: 600;
+}
+.badge-scope.done { background: #d4edda; color: #155724; }
+.badge-scope.miss { background: #f8d7da; color: #721c24; }
+</style>
+{% endblock %}
 
 {% block content %}
 <div class="container py-4">
-  <div class="row">
-    <div class="col-lg-9">
-      <h1 class="h3"><i class="bi bi-info-circle text-danger"></i> Über dieses Projekt</h1>
-      <p class="text-body-secondary">
-        MANV-Dispatch-Prototyp — Verteilung von Verletzten aus einem zentralen Hub
-        auf Krankenhäuser unter Berücksichtigung von Sichtungskategorien,
-        Versorgungsfähigkeit und aktueller Bettenbelegung.
-      </p>
 
-      <div class="row g-3 mt-2">
-        <div class="col-md-6">
-          <div class="card shadow-sm h-100">
-            <div class="card-body">
-              <h5><i class="bi bi-hospital-fill text-danger"></i> Datenbasis</h5>
-              <ul class="small mb-0">
-                <li><strong>4.385 Krankenhäuser</strong> (3.727 geocodiert)</li>
-                <li>Quellen: amtlicher Qualitätsbericht 2024 + QraGo-DB (Google Places)</li>
-                <li>SK1/SK2/SK3-Fähigkeit abgeleitet aus Intensivmedizin, Notaufnahme, BG-Zulassung, Fachabteilungen</li>
-                <li>Geschätzte Kapazität pro SK-Stufe: 5 % / 30 % / 40 % der Betten</li>
-              </ul>
-            </div>
-          </div>
+  <!-- HERO -->
+  <div class="doc-hero">
+    <div class="d-flex justify-content-between align-items-start flex-wrap gap-3">
+      <div>
+        <h1 class="h2"><i class="bi bi-lightbulb-fill"></i> MANV-Dispatch</h1>
+        <div class="subtitle mt-1">
+          Dokumentation & Demo-Drehbuch · Feuerwehr Hackathon 2026
         </div>
-        <div class="col-md-6">
-          <div class="card shadow-sm h-100">
-            <div class="card-body">
-              <h5><i class="bi bi-geo-alt-fill text-danger"></i> Hub Süd</h5>
-              <ul class="small mb-0">
-                <li>Standort: <strong>Ulm</strong> (Universitätsklinikum)</li>
-                <li>Kapazität: ~250 Verletzte/Tag</li>
-                <li>Vorwarnung: 72 h</li>
-                <li>Trauma-Level-1-Zentrum</li>
-              </ul>
-            </div>
-          </div>
-        </div>
-
-        <div class="col-md-6">
-          <div class="card shadow-sm h-100">
-            <div class="card-body">
-              <h5><i class="bi bi-diagram-3-fill text-danger"></i> Verteilungs-Regeln</h5>
-              <ul class="small mb-0">
-                <li><span class="badge sk-badge sk1">SK1</span> vital gefährdet — 5 Tage, braucht SK1-Klinik</li>
-                <li><span class="badge sk-badge sk2">SK2</span> schwer verletzt — 3 Tage, SK1 oder SK2-Klinik</li>
-                <li><span class="badge sk-badge sk3">SK3</span> leicht verletzt — 1 Tag, beliebige Klinik</li>
-                <li>Reihenfolge: SK1 zuerst, dann SK2, dann SK3</li>
-                <li>Pro Patient: nächste Klinik mit freier Kapazität (Radius erweitert sich automatisch)</li>
-              </ul>
-            </div>
-          </div>
-        </div>
-        <div class="col-md-6">
-          <div class="card shadow-sm h-100">
-            <div class="card-body">
-              <h5><i class="bi bi-workflow-fill text-danger"></i> Workflow</h5>
-              <ol class="small mb-0">
-                <li><strong>Status quo</strong> simulieren (Grundbelegung %)</li>
-                <li><strong>Patientenliste</strong> hochladen (IVENA-XLSX) <em>oder</em> im <a href="/simulator">Simulator</a> erzeugen</li>
-                <li><strong>Verteilung</strong> starten — Transportaufträge werden erzeugt</li>
-                <li><strong>Patienten-Übersicht</strong> zeigt wohin jeder Patient kommt</li>
-              </ol>
-            </div>
-          </div>
+        <div class="mt-3 d-flex gap-2 flex-wrap">
+          <span class="doc-chip"><i class="bi bi-hospital-fill"></i> 2.081 Kliniken</span>
+          <span class="doc-chip"><i class="bi bi-geo-alt-fill"></i> Hub Süd · Ulm</span>
+          <span class="doc-chip"><i class="bi bi-clock"></i> 72 h Vorlauf · ~250/Tag</span>
+          <span class="doc-chip"><i class="bi bi-broadcast"></i> HL7 ADT Live</span>
+          <span class="doc-chip"><i class="bi bi-map-fill"></i> HERE Routing + Traffic</span>
         </div>
       </div>
+      <div>
+        <a href="/" class="btn btn-light btn-sm"><i class="bi bi-arrow-right"></i> Zum Dashboard</a>
+      </div>
+    </div>
+  </div>
 
-      <hr class="my-4">
+  <div class="row g-3">
+    <div class="col-lg-3 d-none d-lg-block">
+      <div class="doc-toc">
+        <a href="#problem" class="toc-link active">Problem & Idee</a>
+        <a href="#stats" class="toc-link">Zahlen auf einen Blick</a>
+        <a href="#arch" class="toc-link">Architektur</a>
+        <a href="#features" class="toc-link">Feature-Map</a>
+        <a href="#demo" class="toc-link">Demo-Drehbuch</a>
+        <a href="#hl7" class="toc-link">HL7-Integration</a>
+        <a href="#sk" class="toc-link">SK ↔ IVENA</a>
+        <a href="#data" class="toc-link">Datenpipeline</a>
+        <a href="#deploy" class="toc-link">Deployment</a>
+        <a href="#scope" class="toc-link">Scope-Grenzen</a>
+      </div>
+    </div>
 
-      <h4>Tech-Stack</h4>
-      <ul class="small">
-        <li><strong>Backend</strong>: Flask 3 + SQLAlchemy + Postgres 16, Gunicorn (Docker)</li>
-        <li><strong>Frontend</strong>: Bootstrap 5.3, Leaflet 1.9 + MarkerCluster, Vanilla JS</li>
-        <li><strong>Daten</strong>: openpyxl für XLSX-Parsing und -Generierung</li>
-      </ul>
+    <div class="col-lg-9">
 
-      <div class="alert alert-warning small mt-3">
-        <strong>Hinweis:</strong> Simulation + Prototyp. Echte Leitstellenbewertung erfordert
-        medizinische Validierung und Integration mit IVENA.
+      <!-- PROBLEM -->
+      <section class="doc-section" id="problem">
+        <h2><i class="bi bi-exclamation-octagon-fill text-danger"></i> Problem & Idee</h2>
+        <p>
+          Im MANV-Fall (Massenanfall von Verletzten) kommen <strong>~250 Verletzte/Tag</strong>
+          an einem zentralen Hub an. Die Leitstelle muss sie <strong>triagieren</strong>,
+          auf passende Krankenhäuser <strong>verteilen</strong>, <strong>Transporte organisieren</strong>
+          und das <strong>Lagebild in Echtzeit</strong> führen.
+        </p>
+        <ul class="mb-0">
+          <li>72 h Vorwarnung — planvolle Verteilung möglich</li>
+          <li>Triage nach <strong>SK1/SK2/SK3</strong> (vital · schwer stabil · leicht)</li>
+          <li>Aufenthaltsdauer: <strong>SK1 = 5 Tage</strong> · <strong>SK2 = 3 Tage</strong> · <strong>SK3 = 1 Tag</strong></li>
+          <li>Ziel: Software, die Leitstelle + Rettungsdienst + Krankenhäuser koordiniert</li>
+        </ul>
+      </section>
+
+      <!-- ZAHLEN -->
+      <section class="doc-section" id="stats">
+        <h2><i class="bi bi-bar-chart-fill text-danger"></i> Zahlen auf einen Blick</h2>
+        <div class="row g-2">
+          <div class="col-6 col-md-3"><div class="stat-card"><div class="big">2.081</div><div class="label">Kliniken</div></div></div>
+          <div class="col-6 col-md-3"><div class="stat-card"><div class="big">2.046</div><div class="label">Geo-codiert</div></div></div>
+          <div class="col-6 col-md-3"><div class="stat-card"><div class="big">778</div><div class="label">SK1-fähig</div></div></div>
+          <div class="col-6 col-md-3"><div class="stat-card"><div class="big">2.046</div><div class="label">SK3-fähig</div></div></div>
+          <div class="col-6 col-md-3"><div class="stat-card"><div class="big">~19 k</div><div class="label">SK1-Betten</div></div></div>
+          <div class="col-6 col-md-3"><div class="stat-card"><div class="big">~144 k</div><div class="label">SK2-Betten</div></div></div>
+          <div class="col-6 col-md-3"><div class="stat-card"><div class="big">~208 k</div><div class="label">SK3-Betten</div></div></div>
+          <div class="col-6 col-md-3"><div class="stat-card"><div class="big">4</div><div class="label">Fahrzeug-Typen</div></div></div>
+        </div>
+      </section>
+
+      <!-- ARCHITEKTUR -->
+      <section class="doc-section" id="arch">
+        <h2><i class="bi bi-diagram-3-fill text-danger"></i> Architektur</h2>
+        <div class="arch-diagram">┌──────────────────────────────────────────────────────────────┐
+│  Browser (Bootstrap 5 · Leaflet · Chart.js · Vanilla JS)     │
+└──────────────────────────┬───────────────────────────────────┘
+                           │ HTTP
+┌──────────────────────────▼───────────────────────────────────┐
+│  Flask 3 + SQLAlchemy + Gunicorn (4 Worker) · Docker         │
+│  ┌─────────────────────────────────────────────────────┐    │
+│  │ Routes: /, /patients, /fahrten, /krankenhaus, …     │    │
+│  │ API:    /api/*   (JSON)                             │    │
+│  │                                                      │    │
+│  │ • Dispatch-Engine (SK-Logik, Radius-Rings, Bündelung)│    │
+│  │ • HL7-Ingest (v2.5 ADT Parser)                      │    │
+│  │ • Time-Capsule (Mehrtages-Simulation)               │    │
+│  │ • PDF-Export (ReportLab)                            │    │
+│  │ • XLSX I/O (openpyxl)                               │    │
+│  └─────────────────────────────────────────────────────┘    │
+└──────────┬──────────────────────────────┬────────────────────┘
+           │                              │
+    ┌──────▼────────┐            ┌────────▼─────────────┐
+    │ Postgres 16   │            │ HERE Maps APIs       │
+    │ (Volume)      │            │  • Routing v8        │
+    │               │            │  • Traffic Flow v7   │
+    │               │            │  • Traffic Incidents │
+    └───────────────┘            └──────────────────────┘</div>
+      </section>
+
+      <!-- FEATURES -->
+      <section class="doc-section" id="features">
+        <h2><i class="bi bi-grid-fill text-danger"></i> Feature-Map · klickbar</h2>
+        <div class="feature-grid">
+          <a href="/" class="feature-card">
+            <h4><i class="bi bi-speedometer2"></i> Dashboard</h4>
+            <div class="url">/</div>
+            <p>Karte mit Filter + Dispatch-Workflow (Belegung → Upload → Verteilen).</p>
+          </a>
+          <a href="/krankenhaeuser" class="feature-card">
+            <h4><i class="bi bi-hospital"></i> Kliniken-Übersicht</h4>
+            <div class="url">/krankenhaeuser</div>
+            <p>Alle 2.081 Kliniken klickbar, filterbar nach Land/Träger/SK/Betten/Belegung.</p>
+          </a>
+          <a href="/belegung" class="feature-card">
+            <h4><i class="bi bi-bar-chart-fill"></i> Belegungsübersicht</h4>
+            <div class="url">/belegung</div>
+            <p>Grund- vs. Dispatch-Belegung pro Klinik + Auslastungs-%.</p>
+          </a>
+          <a href="/patients" class="feature-card">
+            <h4><i class="bi bi-people-fill"></i> Patienten</h4>
+            <div class="url">/patients</div>
+            <p>Wer geht wohin? Mit Filter, CSV-Export und Detail-Timeline.</p>
+          </a>
+          <a href="/fahrten" class="feature-card">
+            <h4><i class="bi bi-truck"></i> Fahrten</h4>
+            <div class="url">/fahrten</div>
+            <p>Gebündelte Transporte (RTW 1 · KTW 1 · BTW 2 · Taxi 2), Status-Workflow.</p>
+          </a>
+          <a href="/simulator" class="feature-card">
+            <h4><i class="bi bi-sliders2"></i> Patienten-Simulator</h4>
+            <div class="url">/simulator</div>
+            <p>XLSX-Generator <em>oder</em> „Direkt laden + verteilen".</p>
+          </a>
+          <a href="/adt" class="feature-card">
+            <h4><i class="bi bi-activity"></i> ADT Live-Feed</h4>
+            <div class="url">/adt</div>
+            <p>HL7 v2.5 A01/A03/A08-Events, Simulator-Buttons, Live-Stream.</p>
+          </a>
+          <a href="/timecapsule" class="feature-card">
+            <h4><i class="bi bi-hourglass-split"></i> Time-Capsule</h4>
+            <div class="url">/timecapsule</div>
+            <p>Mehrtages-Simulation mit Chart, Tageskacheln, Ring-Analyse, Top-Kliniken.</p>
+          </a>
+          <a href="/traffic" class="feature-card">
+            <h4><i class="bi bi-signpost-split"></i> Verkehrslage</h4>
+            <div class="url">/traffic</div>
+            <p>Live HERE Flow + Incidents mit Jam-Factor-Farben.</p>
+          </a>
+          <a href="/ivena-matching" class="feature-card">
+            <h4><i class="bi bi-diagram-3"></i> IVENA-Matching</h4>
+            <div class="url">/ivena-matching</div>
+            <p>Referenz SK ↔ MANV-Kategorie ↔ Farbe ↔ T-Code ↔ Transportmittel.</p>
+          </a>
+          <a href="/batches" class="feature-card">
+            <h4><i class="bi bi-folder2-open"></i> Verläufe</h4>
+            <div class="url">/batches</div>
+            <p>Historie aller Uploads / Simulator-Runs · löschbar.</p>
+          </a>
+          <a href="/info" class="feature-card">
+            <h4><i class="bi bi-info-circle"></i> Info</h4>
+            <div class="url">/info</div>
+            <p>Diese Seite — Doku + Demo-Drehbuch + Architektur.</p>
+          </a>
+        </div>
+      </section>
+
+      <!-- DEMO -->
+      <section class="doc-section" id="demo">
+        <h2><i class="bi bi-play-btn-fill text-danger"></i> Demo-Drehbuch <span class="small text-body-secondary fw-normal">· 20 Minuten</span></h2>
+        <p class="text-body-secondary small mb-4">
+          Schritt-für-Schritt für die Hackathon-Präsentation. Reihenfolge ist narrativ:
+          von Problem → Datenlage → Workflow → Live-Integration → Ausblick.
+        </p>
+
+        <div class="demo-step">
+          <div class="demo-step-num">1</div>
+          <div>
+            <h3>Problem einordnen <span class="meta">· 2 Min</span></h3>
+            <div class="meta"><a href="/info">/info</a> · <a href="/ivena-matching">/ivena-matching</a></div>
+            <ol>
+              <li>Diese Seite zeigen — Hero-Zahlen einordnen</li>
+              <li><code>/ivena-matching</code>: SK ↔ Farbe ↔ Transportmittel auf einen Blick</li>
+            </ol>
+          </div>
+        </div>
+
+        <div class="demo-step">
+          <div class="demo-step-num">2</div>
+          <div>
+            <h3>Daten & Karte <span class="meta">· 3 Min</span></h3>
+            <div class="meta"><a href="/krankenhaeuser">/krankenhaeuser</a> · <a href="/krankenhaus/3298">/krankenhaus/&lt;id&gt;</a> · <a href="/">/</a></div>
+            <ol>
+              <li><code>/krankenhaeuser</code>: Filter „Bayern" + „SK1-Max" → ~150 Kliniken</li>
+              <li>Klick auf eine Klinik → Detail-Sicht (Belegung · Eingänge · Karte · Druck-Button)</li>
+              <li>Zurück auf <code>/</code> → Karten-Filter Radius 50 km, nur SK1 → räumlicher Schwerpunkt sichtbar</li>
+            </ol>
+          </div>
+        </div>
+
+        <div class="demo-step">
+          <div class="demo-step-num">3</div>
+          <div>
+            <h3>Leitstellen-Workflow — Verteilung starten <span class="meta">· 5 Min</span></h3>
+            <div class="meta">Dashboard Dispatch-Panel</div>
+            <ol>
+              <li>Slider „Grundbelegung Kliniken" auf <strong>60 %</strong> → <em>Anwenden</em></li>
+              <li>Oben rechts Karten-Farbmodus auf <strong>Belegung</strong> umschalten — einige Kliniken orange/rot</li>
+              <li>Option A: IVENA-XLSX <code>data/IVENA_Fw_Hackathon.xlsx</code> in die Dropzone ziehen</li>
+              <li>Option B: <a href="/simulator"><code>/simulator</code></a> → Preset 250/Tag → <strong>„Direkt laden + verteilen"</strong></li>
+              <li><em>Verteilen</em> drücken → „124 zugewiesen · Ø 0,5 km · 84 Fahrten"</li>
+              <li>Tab „Transportaufträge" → Liste, Routen-Button zeigt Linien auf Karte</li>
+              <li>Klick auf Zeile → Transport-Detail → <strong>PDF-Export</strong>, Drucken, Link teilen</li>
+            </ol>
+          </div>
+        </div>
+
+        <div class="demo-step">
+          <div class="demo-step-num">4</div>
+          <div>
+            <h3>Fahrten & Status-Workflow <span class="meta">· 2 Min</span></h3>
+            <div class="meta"><a href="/fahrten">/fahrten</a></div>
+            <ol>
+              <li><code>/fahrten</code> — 84 Fahrten, KPI-Cards nach Fahrzeug</li>
+              <li>Detail einer Taxi-Fahrt (2 Patienten gebündelt!) → Karte mit echter HERE-Route</li>
+              <li>Status-Buttons: <em>Geplant → Unterwegs → Angekommen</em></li>
+              <li>Ein Patient im Bündel klicken → <a href="/patients/1">/patients/&lt;id&gt;</a> Timeline</li>
+            </ol>
+          </div>
+        </div>
+
+        <div class="demo-step">
+          <div class="demo-step-num">5</div>
+          <div>
+            <h3>Empfangs-Sicht im Krankenhaus <span class="meta">· 1 Min</span></h3>
+            <div class="meta"><a href="/krankenhaus/3298">/krankenhaus/&lt;id&gt;</a></div>
+            <ol>
+              <li>Klinik mit eingehenden Patienten öffnen</li>
+              <li>„Welche Patienten kommen wann an?" — Tabelle nach Ankunft sortiert</li>
+              <li><strong>Drucken</strong> — druckfreundliche Liste für Empfangs-Team</li>
+            </ol>
+          </div>
+        </div>
+
+        <div class="demo-step">
+          <div class="demo-step-num">6</div>
+          <div>
+            <h3>Live ADT-Feed <span class="meta">· 3 Min</span></h3>
+            <div class="meta"><a href="/adt">/adt</a></div>
+            <ol>
+              <li><code>/adt</code> — HL7-Simulator starten: <strong>50× Aufnahme (A01)</strong></li>
+              <li>Live-Tabelle füllt sich, Events flashen gelb</li>
+              <li><strong>50× Entlassung (A03)</strong> → Belegung sinkt sofort</li>
+              <li>Zurück zu <code>/</code> mit Karten-Modus „Belegung" → neue Farben</li>
+              <li>Kollegen (i-engineers-Connector) können einspeisen mit:<br>
+                <span class="code-block" style="display:block; margin-top:4px;">python3 scripts/hl7_adt_generator.py --event A01 -n 50 \
+  --post http://185.181.169.154/api/adt/ingest</span>
+              </li>
+            </ol>
+          </div>
+        </div>
+
+        <div class="demo-step">
+          <div class="demo-step-num">7</div>
+          <div>
+            <h3>Time-Capsule — mehrtägige Simulation <span class="meta">· 2 Min</span></h3>
+            <div class="meta"><a href="/timecapsule">/timecapsule</a></div>
+            <ol>
+              <li><code>/timecapsule</code> → Dauer <strong>7 Tage</strong> · 250 Pat/Tag · Grundbelegung 60 % · Bundesland <strong>Bayern</strong></li>
+              <li>„Simulation starten" → nach ~20 s: Tages-Kacheln mit Peak-Auslastungen</li>
+              <li>Chart zeigt Auslastung über Zeit (% der Kapazität)</li>
+              <li>Scrubber / Play-Button: animiert durch die Tage</li>
+              <li>Top-Kliniken-Tabelle + Radius-Ring-Verteilung (wie weit mussten wir dispatchen?)</li>
+            </ol>
+          </div>
+        </div>
+
+        <div class="demo-step">
+          <div class="demo-step-num">8</div>
+          <div>
+            <h3>Verkehrslage live <span class="meta">· 1 Min</span></h3>
+            <div class="meta"><a href="/traffic">/traffic</a></div>
+            <ol>
+              <li><code>/traffic</code> → Zentrum Ulm, Radius 5 km Flow + 15 km Incidents</li>
+              <li>Aktuelle Baustellen, Jam-Factor, Sperrungen live von HERE</li>
+              <li>Kontext zur Dispatch-Entscheidung: diese Karte zeigt, warum Routing dynamisch sein muss</li>
+            </ol>
+          </div>
+        </div>
+
+        <div class="demo-step">
+          <div class="demo-step-num">9</div>
+          <div>
+            <h3>Abschluss <span class="meta">· 1 Min</span></h3>
+            <div class="meta">Navbar</div>
+            <ol>
+              <li>Navbar <strong>Reset</strong>-Button (rechts oben) → alles zurück</li>
+              <li>Grundbelegungs-Simulation lässt sich erneut starten</li>
+              <li>System bleibt bereit für den nächsten Einsatz</li>
+            </ol>
+          </div>
+        </div>
+      </section>
+
+      <!-- HL7 -->
+      <section class="doc-section" id="hl7">
+        <h2><i class="bi bi-broadcast text-danger"></i> HL7-Integration (i-engineers-Connector)</h2>
+        <p>
+          Der <strong>Connector der Kollegen von i-engineers</strong> pushed HL7 v2.5 ADT-Nachrichten
+          direkt in unsere <code>/api/adt/ingest</code> Endpoint. Wir verstehen:
+        </p>
+        <ul class="mb-3">
+          <li><strong>A01</strong> Aufnahme → <code>belegung_sk[n] += 1</code></li>
+          <li><strong>A03</strong> Entlassung → <code>belegung_sk[n] -= 1</code></li>
+          <li><strong>A08</strong> Update → Log-Only</li>
+        </ul>
+        <p class="small text-body-secondary">
+          SK wird aus <strong>PV1-19</strong> (Visit Number, unsere Konvention) oder <strong>PV1-10</strong> (Hospital Service, Kollegen-Konvention) gelesen.
+          Fachabteilungs-Codes (ITS, UNF, ORT, KAR, …) werden über die FA_TO_SK-Tabelle zu MANV-SK übersetzt.
+        </p>
+
+        <h5 class="mt-4">CLI-Beispiele</h5>
+        <div class="code-block">
+<span class="hl-comment"># 50 Aufnahmen an VM senden</span>
+<span class="hl-cmd">python3 scripts/hl7_adt_generator.py --event A01 -n 50 \
+  --post http://185.181.169.154/api/adt/ingest</span>
+
+<span class="hl-comment"># Kontinuierliche Last (1 msg/s, Mix aus A01/A08/A03)</span>
+<span class="hl-cmd">python3 scripts/hl7_adt_generator.py --mix -n 500 --rate 1 \
+  --post http://185.181.169.154/api/adt/ingest</span>
+        </div>
+      </section>
+
+      <!-- SK MAPPING -->
+      <section class="doc-section" id="sk">
+        <h2><i class="bi bi-tags-fill text-danger"></i> SK ↔ IVENA ↔ Transportmittel</h2>
+        <div class="table-responsive">
+          <table class="table quick-table table-bordered align-middle">
+            <thead>
+              <tr>
+                <th>SK</th><th>IVENA (röm.)</th><th>Farbe</th><th>Bedeutung</th>
+                <th>Aufenthalt</th><th>Transportmittel</th><th>Kap. pro Fahrt</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><span class="badge sk-badge sk1">SK1</span></td>
+                <td>I</td>
+                <td><span class="badge" style="background:#b71c1c">rot</span></td>
+                <td>vital gefährdet / lebensbedrohlich</td>
+                <td>5 Tage</td>
+                <td><strong>RTW</strong> — Rettungswagen + Notarzt</td>
+                <td>1 Pat</td>
+              </tr>
+              <tr>
+                <td><span class="badge sk-badge sk2">SK2</span></td>
+                <td>II</td>
+                <td><span class="badge" style="background:#f57c00">gelb</span></td>
+                <td>schwer verletzt, stabil / dringlich</td>
+                <td>3 Tage</td>
+                <td><strong>KTW</strong> — Krankentransportwagen</td>
+                <td>1 Pat</td>
+              </tr>
+              <tr>
+                <td><span class="badge sk-badge sk3">SK3</span></td>
+                <td>III</td>
+                <td><span class="badge" style="background:#fbc02d; color:#000">grün</span></td>
+                <td>leicht verletzt / aufgeschoben</td>
+                <td>1 Tag</td>
+                <td><strong>Taxi</strong> oder <strong>BTW</strong></td>
+                <td>2 Pat (gebündelt)</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="small text-body-secondary">
+          <strong>SK-Kompatibilität:</strong> Eine SK1-fähige Klinik kann auch SK2/SK3 versorgen.
+          Eine SK2-Klinik kann SK2+SK3. SK3-Klinik nur SK3.
+        </p>
+      </section>
+
+      <!-- DATEN -->
+      <section class="doc-section" id="data">
+        <h2><i class="bi bi-database-fill text-danger"></i> Datenpipeline</h2>
+        <table class="table quick-table table-borderless">
+          <tbody>
+            <tr><td><strong>1. Amtlicher Qualitätsbericht 2024</strong></td><td>2.273 Zeilen mit IK, Fachabteilungen, Notfallstufe</td></tr>
+            <tr><td><strong>2. QraGo-DB</strong></td><td>3.728 Google-Places + LLM-Enrichment (Kapazität, Score)</td></tr>
+            <tr><td><strong>3. Merge</strong> <code>scripts/merge_krankenhaeuser.py</code></td><td>per (IK, Standortnummer) — 4.420 Zeilen</td></tr>
+            <tr><td><strong>4. SK-Ableitung</strong> <code>scripts/add_sk_capability.py</code></td><td>kann_sk1/2/3 aus Fachabteilungen + Intensivmed. + Notaufnahme + Uniklinik</td></tr>
+            <tr><td><strong>5. Deduplizierung</strong> <code>scripts/deduplicate_krankenhaeuser.py</code></td><td>4.420 → <strong>2.081 eindeutige Akut-Kliniken</strong> (Name-Norm + Geo &lt;500m + MANV-Filter)</td></tr>
+            <tr><td><strong>6. Auto-Seed beim App-Start</strong> <code>hackathon/seed.py</code></td><td>Krankenhaus-Tabelle + Hub "Hub Süd" (Ulm) werden initial befüllt</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <!-- DEPLOY -->
+      <section class="doc-section" id="deploy">
+        <h2><i class="bi bi-cloud-upload-fill text-danger"></i> Deployment</h2>
+        <p><strong>VM:</strong> <code>185.181.169.154</code> · Ubuntu 24.04 · 4 CPU / 8 GB RAM · Docker + Docker-Compose</p>
+
+        <div class="code-block">
+<span class="hl-comment"># Erstinstallation</span>
+<span class="hl-cmd">ssh ubuntu@185.181.169.154
+cd ~/hackathon_krankenhaus
+cp .env.example .env
+nano .env                     # Passwörter + HERE_API_KEY eintragen
+sudo docker compose up -d --build</span>
+
+<span class="hl-comment"># Live-Logs</span>
+<span class="hl-cmd">sudo docker compose logs -f web</span>
+
+<span class="hl-comment"># Nur web neu bauen</span>
+<span class="hl-cmd">sudo docker compose build web && sudo docker compose up -d</span>
+        </div>
+
+        <h5 class="mt-3">.env-Variablen</h5>
+        <ul class="small mb-0">
+          <li><code>SECRET_KEY</code> — Flask-Sessions</li>
+          <li><code>POSTGRES_USER</code> / <code>POSTGRES_PASSWORD</code> / <code>POSTGRES_DB</code></li>
+          <li><code>HERE_API_KEY</code> — aktiviert Routing + Traffic (Fallback: Haversine)</li>
+          <li><code>WEB_PORT</code> — Host-Port (default 80)</li>
+        </ul>
+      </section>
+
+      <!-- SCOPE -->
+      <section class="doc-section" id="scope">
+        <h2><i class="bi bi-check2-square text-danger"></i> Scope — was drin ist / was nicht</h2>
+        <h5 class="text-success">✓ Umgesetzt</h5>
+        <div class="row g-1 mb-3">
+          <div class="col-md-6"><span class="badge-scope done">✓ Dedupliziertes Klinik-Register</span></div>
+          <div class="col-md-6"><span class="badge-scope done">✓ Dashboard mit Filter + Karten-Modi</span></div>
+          <div class="col-md-6"><span class="badge-scope done">✓ SK-Logik + Dispatch-Engine</span></div>
+          <div class="col-md-6"><span class="badge-scope done">✓ Expanding-Radius (10/30/50/70/100…)</span></div>
+          <div class="col-md-6"><span class="badge-scope done">✓ Fahrzeug-Bündelung (RTW/KTW/BTW/Taxi)</span></div>
+          <div class="col-md-6"><span class="badge-scope done">✓ HERE Routing + Traffic</span></div>
+          <div class="col-md-6"><span class="badge-scope done">✓ HL7 ADT Ingest + Simulator</span></div>
+          <div class="col-md-6"><span class="badge-scope done">✓ Time-Capsule Multi-Day</span></div>
+          <div class="col-md-6"><span class="badge-scope done">✓ Transport-PDF-Export</span></div>
+          <div class="col-md-6"><span class="badge-scope done">✓ Klinik-Empfangssicht (druckbar)</span></div>
+        </div>
+
+        <h5 class="text-secondary">✗ Nicht im Scope (bewusst)</h5>
+        <div class="row g-1">
+          <div class="col-md-6"><span class="badge-scope miss">✗ Auth / Mehrbenutzer</span></div>
+          <div class="col-md-6"><span class="badge-scope miss">✗ WebSocket-Push statt Polling</span></div>
+          <div class="col-md-6"><span class="badge-scope miss">✗ Mehrere Hubs parallel</span></div>
+          <div class="col-md-6"><span class="badge-scope miss">✗ Traffic in Routing-Entscheidung</span></div>
+          <div class="col-md-6"><span class="badge-scope miss">✗ Station-granulare Kapazitäts-Sperrung</span></div>
+          <div class="col-md-6"><span class="badge-scope miss">✗ Auditierung / Logging</span></div>
+        </div>
+      </section>
+
+      <div class="text-center small text-body-secondary mt-4 pb-4">
+        Version · Stand {{ now.strftime("%d.%m.%Y %H:%M") }} ·
+        <a href="https://github.com/FeuerwehrHackathon2024/2026-gesundheitslagebild-2" target="_blank" class="text-decoration-none">Repo</a> ·
+        <a href="/" class="text-decoration-none">Zum Dashboard →</a>
       </div>
     </div>
   </div>
 </div>
+
+<script>
+// Sticky ToC Highlight
+(function () {
+  const links = document.querySelectorAll(".toc-link");
+  const sections = document.querySelectorAll(".doc-section");
+  function onScroll() {
+    let current = sections[0]?.id;
+    sections.forEach(s => {
+      const rect = s.getBoundingClientRect();
+      if (rect.top <= 120) current = s.id;
+    });
+    links.forEach(l => l.classList.toggle("active", l.getAttribute("href") === "#" + current));
+  }
+  window.addEventListener("scroll", onScroll, { passive: true });
+  onScroll();
+})();
+</script>
 {% endblock %}

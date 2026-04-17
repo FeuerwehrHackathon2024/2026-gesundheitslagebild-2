@@ -2,6 +2,10 @@ from datetime import datetime
 
 from flask import Blueprint, Response, jsonify, render_template, request
 
+
+def _now():
+    return datetime.now()
+
 from .simulator import SimInput, build_xlsx
 
 
@@ -85,7 +89,7 @@ def ivena_matching_page() -> str:
 
 @main_bp.get("/info")
 def info_page() -> str:
-    return render_template("info.html")
+    return render_template("info.html", now=datetime.now())
 
 
 @main_bp.get("/adt")

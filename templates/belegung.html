@@ -172,6 +172,20 @@
     allData = await fetch("/api/belegung").then(r => r.json());
     renderTotals(allData);
     render();
+    // Wenn keine Belegung vorhanden: Hinweis zeigen
+    const totalBel = allData.reduce((s, r) => s + r.belegung_total.SK1 + r.belegung_total.SK2 + r.belegung_total.SK3, 0);
+    if (totalBel === 0 && allData.length > 0) {
+      const tbody = document.querySelector("#bel-table tbody");
+      tbody.innerHTML = `<tr><td colspan="14" class="text-center py-5">
+        <div class="mb-2"><i class="bi bi-info-circle fs-3 text-body-secondary"></i></div>
+        <div class="fw-semibold">Noch keine Belegungsdaten.</div>
+        <div class="small text-body-secondary">
+          Starte eine Verteilung im <a href="/">Dashboard</a>, eine
+          <a href="/timecapsule">Time-Capsule</a>-Simulation oder simuliere
+          Events im <a href="/adt">ADT-Feed</a>.
+        </div>
+      </td></tr>`;
+    }
   }
 
   document.getElementById("filter-show").addEventListener("change", render);

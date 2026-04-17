@@ -312,9 +312,13 @@ def dispatch_batch(batch: PatientenBatch, hub: Hub, use_here: bool = True) -> Di
         col = f"belegung_{p.sk.lower()}"
         setattr(target_bel, col, getattr(target_bel, col) + 1)
 
-        # Zuweisung merken — Fahrt + Route bündeln wir nach dem Loop
+        # Zuweisung merken — Fahrt + Route bündeln wir nach dem Loop.
+        # SK3 wechselt alternierend zwischen Taxi und BTW, damit beide Fahrzeugtypen
+        # zum Einsatz kommen (beide haben 2 Pat Kapazität).
         tm_info = IVENA_TRANSPORTMITTEL.get(p.sk, {})
         tm_code = tm_info.get("code", "KTW")
+        if p.sk == "SK3":
+            tm_code = "Taxi" if (assigned % 2 == 0) else "BTW"
         p_assignments.append({
             "patient": p, "krankenhaus": target, "distance": target_dist, "tm_code": tm_code,
         })
