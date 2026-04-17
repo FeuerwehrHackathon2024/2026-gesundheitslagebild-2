@@ -79,6 +79,11 @@ html, body { height: 100%; }
   align-items: center;
   box-shadow: 0 1px 3px rgba(0,0,0,0.06);
   height: 100%;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+.kpi-card.kpi-clickable:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 10px rgba(0,0,0,0.08);
 }
 .kpi-icon {
   width: 44px; height: 44px;

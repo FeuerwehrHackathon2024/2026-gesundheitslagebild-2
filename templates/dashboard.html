@@ -28,24 +28,30 @@
       </div>
     </div>
     <div class="col-6 col-lg-3">
-      <div class="kpi-card">
-        <div class="kpi-icon bg-warning-subtle text-warning-emphasis"><i class="bi bi-truck"></i></div>
-        <div>
-          <div class="kpi-label">Transportaufträge</div>
-          <div class="kpi-value" id="kpi-transports">—</div>
-          <div class="kpi-sub" id="kpi-transport-sub">offen</div>
+      <a href="/fahrten" class="text-decoration-none text-body">
+        <div class="kpi-card kpi-clickable">
+          <div class="kpi-icon bg-warning-subtle text-warning-emphasis"><i class="bi bi-truck"></i></div>
+          <div class="flex-grow-1">
+            <div class="kpi-label">Transportaufträge</div>
+            <div class="kpi-value" id="kpi-transports">—</div>
+            <div class="kpi-sub" id="kpi-transport-sub">noch keine</div>
+          </div>
+          <i class="bi bi-arrow-right text-body-secondary"></i>
         </div>
-      </div>
+      </a>
     </div>
     <div class="col-6 col-lg-3">
-      <div class="kpi-card">
-        <div class="kpi-icon bg-primary-subtle text-primary-emphasis"><i class="bi bi-people-fill"></i></div>
-        <div>
-          <div class="kpi-label">Aktueller Batch</div>
-          <div class="kpi-value" id="kpi-batch-total">—</div>
-          <div class="kpi-sub" id="kpi-batch-sub">kein Batch aktiv</div>
+      <a href="/batches" class="text-decoration-none text-body">
+        <div class="kpi-card kpi-clickable">
+          <div class="kpi-icon bg-primary-subtle text-primary-emphasis"><i class="bi bi-people-fill"></i></div>
+          <div class="flex-grow-1">
+            <div class="kpi-label">Aktueller Batch</div>
+            <div class="kpi-value" id="kpi-batch-total">—</div>
+            <div class="kpi-sub" id="kpi-batch-sub">kein Batch aktiv</div>
+          </div>
+          <i class="bi bi-arrow-right text-body-secondary"></i>
         </div>
-      </div>
+      </a>
     </div>
   </div>
 

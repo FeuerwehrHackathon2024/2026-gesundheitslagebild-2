@@ -547,6 +547,70 @@
     }
   }
 
+  /** Lädt bereits vorhandene Batches/Fahrten beim Dashboard-Start und
+   *  aktualisiert damit die KPI-Kacheln + Karten-Routes. */
+  async function loadExistingActivity() {
+    try {
+      const [batches, fahrten] = await Promise.all([
+        fetch("/api/batches").then(r => r.json()),
+        fetch("/api/fahrten").then(r => r.json()),
+      ]);
+
+      // KPI: Transportaufträge = Summe aller Fahrten
+      const tEl = document.getElementById("kpi-transports");
+      const sEl = document.getElementById("kpi-transport-sub");
+      if (tEl) tEl.textContent = fahrten.length.toLocaleString("de-DE");
+      if (sEl) {
+        const byVehicle = fahrten.reduce((acc, f) => {
+          acc[f.transportmittel] = (acc[f.transportmittel] || 0) + 1;
+          return acc;
+        }, {});
+        const parts = ["RTW", "KTW", "BTW", "Taxi"]
+          .map(v => byVehicle[v] ? `${byVehicle[v]} ${v}` : null)
+          .filter(Boolean);
+        sEl.textContent = fahrten.length ? parts.join(" · ") : "noch keine";
+      }
+
+      // KPI: aktueller Batch = neuester wartend, sonst neuester verteilt
+      const pending = batches.find(b => b.status === "uploaded");
+      const latest = pending || batches[0];
+      const bt = document.getElementById("kpi-batch-total");
+      const bs = document.getElementById("kpi-batch-sub");
+      if (bt && bs) {
+        if (latest) {
+          bt.textContent = latest.total;
+          const statusLabel = latest.status === "dispatched" ? "verteilt" : "wartet auf Verteilung";
+          bs.innerHTML = `${latest.filename} — SK1:${latest.sk1} · SK2:${latest.sk2} · SK3:${latest.sk3} <span class="text-body-secondary">· ${statusLabel}</span>`;
+        } else {
+          bt.textContent = "—";
+          bs.textContent = "kein Batch aktiv";
+        }
+      }
+
+      // Letzten wartenden Batch automatisch als Dispatch-Target übernehmen,
+      // damit der "Verteilen"-Button funktioniert.
+      if (pending) {
+        state.batch = {
+          batch_id: pending.id, filename: pending.filename, hub: pending.hub_name,
+          total: pending.total, sk1: pending.sk1, sk2: pending.sk2, sk3: pending.sk3,
+        };
+        showBatchPanel(state.batch);
+      } else if (latest && latest.status === "dispatched") {
+        // Für die Transporte-Tabelle: letzten dispatched Batch laden
+        state.batch = {
+          batch_id: latest.id, filename: latest.filename, hub: latest.hub_name,
+          total: latest.total, sk1: latest.sk1, sk2: latest.sk2, sk3: latest.sk3,
+        };
+        // Transporte laden für die Map-Routes + Tabelle
+        const resp = await fetch(`/api/transports?batch_id=${latest.id}`);
+        state.transports = await resp.json();
+        renderTransportTable();
+      }
+    } catch (err) {
+      console.warn("loadExistingActivity failed:", err);
+    }
+  }
+
   function setDispatchResult(html) {
     document.getElementById("dispatch-result").innerHTML = html;
   }
@@ -623,6 +687,7 @@
         </div>`);
       await loadTransports();
       fetch("/api/simulation/status").then(r => r.json()).then(renderBelegungTotals);
+      loadExistingActivity();
       // Tab auf Transporte
       new bootstrap.Tab(document.querySelector('[data-bs-target="#tab-transporte"]')).show();
     } catch (err) {
@@ -743,6 +808,7 @@
       wireFilters(opts);
       wireDispatch();
       applyFilters();
+      loadExistingActivity();
     } catch (err) {
       console.error("Dashboard init failed:", err);
       alert("Fehler beim Laden der Daten. Siehe Konsole.");
