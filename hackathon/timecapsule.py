@@ -149,6 +149,15 @@ def run_capsule(params: CapsuleParams) -> dict:
         return {"error": "Kein Hub in DB"}
 
     _reset_simulation_state()
+    # Wichtig: Belegungs-Rows für alle bayrischen Kliniken sicherstellen,
+    # bevor wir die Grundbelegung setzen (sonst greift der Bundesland-Filter
+    # ins Leere, wenn noch nie gedispatched wurde).
+    for kh in (db.session.query(Krankenhaus)
+               .filter(Krankenhaus.lat.isnot(None))
+               .all()):
+        _ensure_belegung(kh)
+    db.session.commit()
+
     bundesland_ids = _bundesland_kh_ids(params.bundesland)
     _set_grundbelegung(params.grundbelegung_prozent, rng, bundesland_ids)
 

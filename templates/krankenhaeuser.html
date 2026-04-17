@@ -1,0 +1,192 @@
+{% extends "base.html" %}
+
+{% block title %}Krankenhäuser · Übersicht{% endblock %}
+
+{% block head_extra %}
+<style>
+.kh-card {
+  background: #fff; border-radius: 12px; padding: 1rem;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06); transition: transform 0.12s, box-shadow 0.12s;
+  cursor: pointer; text-decoration: none; color: inherit;
+  display: flex; flex-direction: column; gap: 0.5rem; height: 100%;
+}
+.kh-card:hover { transform: translateY(-2px); box-shadow: 0 6px 14px rgba(0,0,0,0.08); color: inherit; }
+.kh-card .kh-title { font-weight: 700; line-height: 1.2; color: #212529; }
+.kh-card .kh-meta { font-size: 0.78rem; color: #6c757d; }
+.kh-card .kh-badges { display: flex; flex-wrap: wrap; gap: 4px; }
+.kh-card .kh-pct { display: flex; gap: 4px; }
+.kh-pct .pct-chip { flex: 1; text-align: center; padding: 3px 4px; border-radius: 4px; font-size: 0.72rem; color: #fff; font-weight: 700; }
+.kh-ago-excluded { opacity: 0.55; border-left: 4px solid #b71c1c; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+  <div class="d-flex justify-content-between align-items-start mb-3 flex-wrap gap-3">
+    <div>
+      <h1 class="h3 mb-1"><i class="bi bi-hospital text-danger"></i> Krankenhäuser</h1>
+      <p class="text-body-secondary mb-0">Alle Kliniken im Dispatch-Scope — klicke eine Karte für die Klinik-Sicht.</p>
+    </div>
+    <a href="/" class="btn btn-outline-danger"><i class="bi bi-arrow-left"></i> Dashboard</a>
+  </div>
+
+  <!-- Filter -->
+  <div class="card shadow-sm mb-3">
+    <div class="card-body">
+      <div class="row g-2 align-items-end">
+        <div class="col-md-2">
+          <label class="form-label small fw-semibold mb-1">Suche</label>
+          <input type="text" class="form-control form-control-sm" id="flt-search" placeholder="Name / Ort / PLZ">
+        </div>
+        <div class="col-md-2">
+          <label class="form-label small fw-semibold mb-1">Bundesland</label>
+          <select class="form-select form-select-sm" id="flt-bundesland">
+            <option value="">Alle</option>
+          </select>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label small fw-semibold mb-1">Trägerart</label>
+          <select class="form-select form-select-sm" id="flt-traeger">
+            <option value="">Alle</option>
+          </select>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label small fw-semibold mb-1">SK-Max</label>
+          <select class="form-select form-select-sm" id="flt-sk">
+            <option value="">Alle</option>
+            <option value="SK1">SK1</option>
+            <option value="SK2">SK2</option>
+            <option value="SK3">SK3</option>
+          </select>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label small fw-semibold mb-1">Min. Betten</label>
+          <input type="number" class="form-control form-control-sm" id="flt-betten" value="0" min="0" step="50">
+        </div>
+        <div class="col-md-2">
+          <label class="form-label small fw-semibold mb-1">Belegung</label>
+          <select class="form-select form-select-sm" id="flt-occ">
+            <option value="">Alle</option>
+            <option value="frei">frei (&lt;60%)</option>
+            <option value="mittel">mittel (60-85%)</option>
+            <option value="voll">voll (85-100%)</option>
+            <option value="uebervoll">überlastet (&gt;100%)</option>
+          </select>
+        </div>
+      </div>
+      <div class="mt-2 small text-body-secondary d-flex justify-content-between">
+        <span id="flt-count">— Kliniken</span>
+        <div class="form-check form-check-inline">
+          <input class="form-check-input" type="checkbox" id="flt-incl-excluded">
+          <label class="form-check-label small" for="flt-incl-excluded">ausgeschlossene zeigen</label>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="kh-grid" class="row g-2"></div>
+</div>
+
+<script>
+(async function () {
+  const esc = s => (s ?? "").toString().replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"})[c]);
+  const pctClass = p => p == null ? "unknown" : p >= 100 ? "over" : p >= 85 ? "high" : p >= 60 ? "mid" : "low";
+  const pctColor = p => ({low:"#2e7d32", mid:"#f9a825", high:"#e65100", over:"#b71c1c", unknown:"#adb5bd"})[pctClass(p)];
+  const skBadge = sk => sk ? `<span class="badge sk-badge sk${sk.replace("SK","")}">${esc(sk)}</span>` : `<span class="badge bg-secondary">–</span>`;
+
+  const [kliniken, occupancy, opts] = await Promise.all([
+    fetch("/api/krankenhaeuser").then(r => r.json()),
+    fetch("/api/krankenhaeuser/occupancy").then(r => r.json()),
+    fetch("/api/filter-options").then(r => r.json()),
+  ]);
+  const occById = {};
+  occupancy.forEach(o => { occById[o.id] = o; });
+
+  const blSel = document.getElementById("flt-bundesland");
+  (opts.bundeslaender || []).forEach(b => { const o = document.createElement("option"); o.value=b; o.textContent=b; blSel.appendChild(o); });
+  const tSel = document.getElementById("flt-traeger");
+  (opts.traeger_arten || []).forEach(t => { const o = document.createElement("option"); o.value=t; o.textContent=t; tSel.appendChild(o); });
+
+  function render() {
+    const q = document.getElementById("flt-search").value.trim().toLowerCase();
+    const bl = document.getElementById("flt-bundesland").value;
+    const tr = document.getElementById("flt-traeger").value;
+    const sk = document.getElementById("flt-sk").value;
+    const mb = Number(document.getElementById("flt-betten").value) || 0;
+    const occ = document.getElementById("flt-occ").value;
+    const inclExcl = document.getElementById("flt-incl-excluded").checked;
+
+    const filtered = kliniken.filter(k => {
+      if (!inclExcl && k.ausgeschlossen) return false;
+      if (bl && k.bundesland !== bl) return false;
+      if (tr && k.traeger_art !== tr) return false;
+      if (sk && k.sk_max !== sk) return false;
+      if (mb > 0 && (k.betten || 0) < mb) return false;
+      if (occ) {
+        const o = occById[k.id];
+        if (!o || o.status !== occ) return false;
+      }
+      if (q) {
+        const hay = `${k.name || ""} ${k.ort || ""} ${k.plz || ""}`.toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      return true;
+    });
+
+    document.getElementById("flt-count").textContent = `${filtered.length} / ${kliniken.length} Kliniken`;
+
+    const grid = document.getElementById("kh-grid");
+    if (!filtered.length) {
+      grid.innerHTML = `<div class="col-12 text-center text-body-secondary py-5">Keine Treffer</div>`;
+      return;
+    }
+    grid.innerHTML = filtered.slice(0, 500).map(k => {
+      const o = occById[k.id];
+      const flags = [
+        [k.hat_intensivmedizin, "ITS"],
+        [k.hat_notaufnahme, "NA"],
+        [k.hat_bg_zulassung, "BG"],
+        [k.hat_radiologie, "Radio"],
+      ].filter(([on]) => on).map(([, l]) => `<span class="badge bg-light text-dark border">${l}</span>`).join("");
+      const sk1 = k.kann_sk1 ? skBadge("SK1") : "";
+      const sk2 = k.kann_sk2 ? skBadge("SK2") : "";
+      const sk3 = k.kann_sk3 ? skBadge("SK3") : "";
+      const occLabel = o?.fill_pct != null ? `${o.fill_pct}%` : "–";
+      const occColor = pctColor(o?.fill_pct);
+      return `
+        <div class="col-sm-6 col-lg-4 col-xl-3">
+          <a href="/krankenhaus/${k.id}" class="kh-card ${k.ausgeschlossen ? 'kh-ago-excluded' : ''}">
+            <div>
+              <div class="kh-title text-truncate" title="${esc(k.name || '')}">${esc(k.name || '')}</div>
+              <div class="kh-meta">${esc([k.plz, k.ort].filter(Boolean).join(' '))}${k.bundesland ? ' · ' + esc(k.bundesland) : ''}</div>
+            </div>
+            <div class="kh-badges">
+              ${sk1}${sk2}${sk3}
+              ${k.universitaet ? '<span class="badge bg-info text-dark">Uni</span>' : ''}
+              ${k.ausgeschlossen ? '<span class="badge bg-danger">ausgeschl.</span>' : ''}
+            </div>
+            <div class="d-flex justify-content-between small">
+              <span class="text-body-secondary">
+                ${k.betten ? `<strong>${k.betten}</strong> Betten` : '–'}
+              </span>
+              <span class="badge" style="background:${occColor}; color:#fff;">${occLabel}</span>
+            </div>
+            ${flags ? `<div class="d-flex gap-1 flex-wrap small">${flags}</div>` : ''}
+          </a>
+        </div>`;
+    }).join("");
+    if (filtered.length > 500) {
+      grid.insertAdjacentHTML("beforeend",
+        `<div class="col-12 text-center small text-body-secondary py-3">… ${filtered.length - 500} weitere (bitte Filter nutzen)</div>`);
+    }
+  }
+
+  ["flt-search","flt-bundesland","flt-traeger","flt-sk","flt-betten","flt-occ","flt-incl-excluded"]
+    .forEach(id => document.getElementById(id).addEventListener("input", render));
+  ["flt-bundesland","flt-traeger","flt-sk","flt-occ"]
+    .forEach(id => document.getElementById(id).addEventListener("change", render));
+
+  render();
+})();
+</script>
+{% endblock %}

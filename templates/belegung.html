@@ -136,7 +136,9 @@
       const excludedBadge = r.ausgeschlossen ? `<i class="bi bi-x-circle-fill text-danger ms-1" title="ausgeschlossen"></i>` : "";
       return `
         <tr>
-          <td class="fw-semibold">${esc(r.name)}${excludedBadge}</td>
+          <td class="fw-semibold">
+            <a href="/krankenhaus/${r.id}" class="text-decoration-none text-body">${esc(r.name)}</a>${excludedBadge}
+          </td>
           <td>${esc(r.ort || "")}</td>
           ${fmtCell(r.grundbelegung.SK1, r.dispatch.SK1, r.kapazitaet.SK1)}
           ${fmtCell(r.grundbelegung.SK2, r.dispatch.SK2, r.kapazitaet.SK2)}

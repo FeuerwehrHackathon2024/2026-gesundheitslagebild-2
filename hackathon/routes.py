@@ -58,6 +58,11 @@ def belegung_page() -> str:
     return render_template("belegung.html")
 
 
+@main_bp.get("/krankenhaeuser")
+def krankenhaeuser_page() -> str:
+    return render_template("krankenhaeuser.html")
+
+
 @main_bp.get("/ivena-matching")
 def ivena_matching_page() -> str:
     from .ivena_mapping import (
