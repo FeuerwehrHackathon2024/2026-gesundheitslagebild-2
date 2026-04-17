@@ -120,6 +120,38 @@
     </div>
   </div>
 
+  <!-- Fahrzeug-Katalog -->
+  <div class="card shadow-sm mb-4">
+    <div class="card-header">
+      <h2 class="h6 mb-0"><i class="bi bi-truck"></i> Fahrzeug-Katalog · Kapazitäten</h2>
+      <small class="text-body-secondary">Intelligente Bündelung nutzt diese Kapazitäten (1 HERE-Route pro Ziel-Klinik, ge­teilt zwischen allen Fahrten zur selben Klinik).</small>
+    </div>
+    <div class="card-body p-0">
+      <table class="table mb-0 align-middle">
+        <thead class="table-light">
+          <tr><th>Code</th><th>Bezeichnung</th><th>Besatzung</th><th class="text-end">Patienten pro Fahrt</th><th>Default für</th></tr>
+        </thead>
+        <tbody>
+          {% for code, info in transportmittel_katalog.items() %}
+          {% set default_sk = [] %}
+          {% for sk, t in sk_transport.items() %}{% if t.code == code %}{% set _ = default_sk.append(sk) %}{% endif %}{% endfor %}
+          <tr>
+            <td><strong>{{ code }}</strong></td>
+            <td>{{ info.name }}</td>
+            <td class="small text-body-secondary">{{ info.besatzung }}</td>
+            <td class="text-end fw-semibold">{{ info.kapazitaet }}</td>
+            <td>
+              {% for sk in default_sk %}
+                <span class="badge sk-badge sk{{ sk[-1] }}">{{ sk }}</span>
+              {% endfor %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
   <!-- Fachbereich-Zuordnung -->
   <div class="card shadow-sm mb-4">
     <div class="card-header">

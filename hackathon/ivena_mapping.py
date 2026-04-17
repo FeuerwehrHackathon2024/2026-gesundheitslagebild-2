@@ -82,11 +82,28 @@ IVENA_FACHBEREICH_TO_SK = {
 }
 
 
-# Transportmittel-Empfehlung je SK (vom Hub zur Klinik)
+# Transportmittel-Katalog — Kapazität laut Vorgabe
+TRANSPORTMITTEL_KATALOG = {
+    "RTW":  {"name": "Rettungswagen",           "besatzung": "RettAss + NotArzt",        "kapazitaet": 1, "symbol": "bi-bandaid-fill"},
+    "KTW":  {"name": "Krankentransportwagen",   "besatzung": "Rettungssanitäter",        "kapazitaet": 1, "symbol": "bi-ambulance"},
+    "BTW":  {"name": "Behindertentransportwagen", "besatzung": "qualifizierter Fahrer", "kapazitaet": 2, "symbol": "bi-universal-access"},
+    "Taxi": {"name": "Taxi / Patiententransport", "besatzung": "Fahrer",                 "kapazitaet": 2, "symbol": "bi-car-front-fill"},
+}
+
+# Transportmittel-Empfehlung je SK (Default-Zuordnung vom Hub zur Klinik)
+#   SK1 → RTW (medizinisch notwendig, 1 Patient)
+#   SK2 → KTW (qualifizierte Versorgung, 1 Patient — BTW als Alternative möglich)
+#   SK3 → Taxi (mobil, 2 Patienten bündelbar — BTW ebenfalls)
 SK_TRANSPORTMITTEL = {
-    "SK1": {"code": "RTW", "name": "Rettungswagen mit Notarzt", "besatzung": "RettAss + NotArzt", "prio": 1},
-    "SK2": {"code": "KTW", "name": "Krankentransportwagen", "besatzung": "Rettungssanitäter", "prio": 2},
-    "SK3": {"code": "Taxi", "name": "Patiententransport", "besatzung": "Fahrer", "prio": 3},
+    "SK1": {"code": "RTW",  "name": TRANSPORTMITTEL_KATALOG["RTW"]["name"],
+            "besatzung": TRANSPORTMITTEL_KATALOG["RTW"]["besatzung"], "prio": 1,
+            "alternativen": []},
+    "SK2": {"code": "KTW",  "name": TRANSPORTMITTEL_KATALOG["KTW"]["name"],
+            "besatzung": TRANSPORTMITTEL_KATALOG["KTW"]["besatzung"], "prio": 2,
+            "alternativen": ["BTW"]},
+    "SK3": {"code": "Taxi", "name": TRANSPORTMITTEL_KATALOG["Taxi"]["name"],
+            "besatzung": TRANSPORTMITTEL_KATALOG["Taxi"]["besatzung"], "prio": 3,
+            "alternativen": ["BTW"]},
 }
 
 

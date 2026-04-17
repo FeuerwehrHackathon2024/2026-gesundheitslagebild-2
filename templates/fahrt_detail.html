@@ -69,6 +69,7 @@ const FAHRT_ID = {{ fahrt_id }};
 
   const vehicleBadge = f.transportmittel === "RTW" ? '<span class="badge bg-danger fs-5">RTW</span>'
     : f.transportmittel === "KTW" ? '<span class="badge bg-warning text-dark fs-5">KTW</span>'
+    : f.transportmittel === "BTW" ? '<span class="badge bg-info text-dark fs-5">BTW</span>'
     : '<span class="badge bg-primary fs-5">Taxi</span>';
 
   document.getElementById("f-header").innerHTML = `
@@ -133,7 +134,10 @@ const FAHRT_ID = {{ fahrt_id }};
     L.marker([f.ziel.lat, f.ziel.lon]).addTo(map).bindPopup(esc(f.ziel.name));
     bounds.push([f.ziel.lat, f.ziel.lon]);
   }
-  const color = f.transportmittel === "RTW" ? "#dc3545" : f.transportmittel === "KTW" ? "#f57c00" : "#0d6efd";
+  const color = f.transportmittel === "RTW" ? "#dc3545"
+    : f.transportmittel === "KTW" ? "#f57c00"
+    : f.transportmittel === "BTW" ? "#0dcaf0"
+    : "#0d6efd";
   if (f.route_geojson?.coordinates?.length) {
     L.polyline(f.route_geojson.coordinates.map(([lo,la]) => [la, lo]),
       { color, weight: 5, opacity: 0.8 }).addTo(map);

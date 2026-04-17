@@ -62,9 +62,8 @@ def belegung_page() -> str:
 def ivena_matching_page() -> str:
     from .ivena_mapping import (
         IVENA_SK_LOOKUP, SK_FARBE, IVENA_VERSORGUNGSSTUFE_TO_SK,
-        IVENA_FACHBEREICH_TO_SK, SK_TRANSPORTMITTEL,
+        IVENA_FACHBEREICH_TO_SK, SK_TRANSPORTMITTEL, TRANSPORTMITTEL_KATALOG,
     )
-    # Ausgangsbegriffe nach Ziel-SK gruppieren
     by_sk: dict[str, list[str]] = {"SK1": [], "SK2": [], "SK3": []}
     for src, dst in IVENA_SK_LOOKUP.items():
         by_sk.setdefault(dst, []).append(src)
@@ -72,6 +71,7 @@ def ivena_matching_page() -> str:
         "ivena_matching.html",
         sk_farbe=SK_FARBE,
         sk_transport=SK_TRANSPORTMITTEL,
+        transportmittel_katalog=TRANSPORTMITTEL_KATALOG,
         ivena_by_sk=by_sk,
         versorgungsstufe=IVENA_VERSORGUNGSSTUFE_TO_SK,
         fachbereich=IVENA_FACHBEREICH_TO_SK,

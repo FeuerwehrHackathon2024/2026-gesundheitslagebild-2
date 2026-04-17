@@ -35,13 +35,14 @@ SK_AUFENTHALT_TAGE = {"SK1": 5, "SK2": 3, "SK3": 1}
 SK_TRANSPORTMITTEL = {"SK1": "RTW", "SK2": "KTW", "SK3": "Taxi"}
 
 # Pickup-Offset je Transportmittel in Minuten (bis der Patient am Hub abgeholt ist)
-TRANSPORTMITTEL_PICKUP_OFFSET_MIN = {"RTW": 2, "KTW": 5, "Taxi": 10}
+TRANSPORTMITTEL_PICKUP_OFFSET_MIN = {"RTW": 2, "KTW": 5, "BTW": 5, "Taxi": 10}
 
-# Fahrzeug-Kapazitäten (Anzahl Patienten pro Fahrt)
+# Fahrzeug-Kapazitäten (Anzahl Patienten pro Fahrt) — gemäß Vorgabe
 TRANSPORTMITTEL_KAPAZITAET = {
-    "RTW": 2,   # Rettungswagen: max 2 liegend
-    "KTW": 1,   # Krankentransportwagen: 1 Patient
-    "Taxi": 2,  # Taxi/Patiententransport: 2 sitzend
+    "RTW": 1,   # Rettungswagen mit Notarzt: 1 Patient (vital)
+    "KTW": 1,   # Krankentransportwagen: 1 Patient (liegend)
+    "BTW": 2,   # Behindertentransportwagen: 2 Patienten (sitzend/Rollstuhl)
+    "Taxi": 2,  # Taxi/Patiententransport: 2 Patienten (sitzend, mobil)
 }
 
 # SK-Kompatibilität: ein SK1-fähiges KH kann auch SK2 und SK3 versorgen

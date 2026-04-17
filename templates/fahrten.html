@@ -20,17 +20,21 @@
       <div class="kpi-icon bg-danger-subtle text-danger-emphasis"><i class="bi bi-truck"></i></div>
       <div><div class="kpi-label">Fahrten gesamt</div><div class="kpi-value" id="kpi-total">—</div></div>
     </div></div>
-    <div class="col-md-3"><div class="kpi-card">
-      <div class="kpi-icon bg-danger-subtle text-danger-emphasis"><i class="bi bi-bandaid"></i></div>
-      <div><div class="kpi-label">RTW</div><div class="kpi-value" id="kpi-rtw">—</div></div>
+    <div class="col-md-2"><div class="kpi-card">
+      <div class="kpi-icon bg-danger-subtle text-danger-emphasis"><i class="bi bi-bandaid-fill"></i></div>
+      <div><div class="kpi-label">RTW <span class="text-body-secondary">· 1 Pat</span></div><div class="kpi-value" id="kpi-rtw">—</div></div>
     </div></div>
-    <div class="col-md-3"><div class="kpi-card">
+    <div class="col-md-2"><div class="kpi-card">
       <div class="kpi-icon bg-warning-subtle text-warning-emphasis"><i class="bi bi-ambulance"></i></div>
-      <div><div class="kpi-label">KTW</div><div class="kpi-value" id="kpi-ktw">—</div></div>
+      <div><div class="kpi-label">KTW <span class="text-body-secondary">· 1 Pat</span></div><div class="kpi-value" id="kpi-ktw">—</div></div>
     </div></div>
-    <div class="col-md-3"><div class="kpi-card">
+    <div class="col-md-2"><div class="kpi-card">
+      <div class="kpi-icon bg-info-subtle text-info-emphasis"><i class="bi bi-universal-access"></i></div>
+      <div><div class="kpi-label">BTW <span class="text-body-secondary">· 2 Pat</span></div><div class="kpi-value" id="kpi-btw">—</div></div>
+    </div></div>
+    <div class="col-md-2"><div class="kpi-card">
       <div class="kpi-icon bg-primary-subtle text-primary-emphasis"><i class="bi bi-car-front-fill"></i></div>
-      <div><div class="kpi-label">Taxi</div><div class="kpi-value" id="kpi-taxi">—</div></div>
+      <div><div class="kpi-label">Taxi <span class="text-body-secondary">· 2 Pat</span></div><div class="kpi-value" id="kpi-taxi">—</div></div>
     </div></div>
   </div>
 
@@ -73,6 +77,7 @@
   kpi("kpi-total", f.length);
   kpi("kpi-rtw", f.filter(x => x.transportmittel === "RTW").length);
   kpi("kpi-ktw", f.filter(x => x.transportmittel === "KTW").length);
+  kpi("kpi-btw", f.filter(x => x.transportmittel === "BTW").length);
   kpi("kpi-taxi", f.filter(x => x.transportmittel === "Taxi").length);
 
   const tbody = document.querySelector("#f-table tbody");
@@ -84,6 +89,7 @@
   tbody.innerHTML = f.map(x => {
     const vehicle = x.transportmittel === "RTW" ? '<span class="badge bg-danger">RTW</span>'
       : x.transportmittel === "KTW" ? '<span class="badge bg-warning text-dark">KTW</span>'
+      : x.transportmittel === "BTW" ? '<span class="badge bg-info text-dark">BTW</span>'
       : '<span class="badge bg-primary">Taxi</span>';
     const pat = (x.patienten || []).map(p => {
       const sk = "sk" + (p.sk || "").replace("SK", "");
