@@ -9,33 +9,100 @@
       <h1 class="h3 mb-1"><i class="bi bi-truck text-danger"></i> Fahrten</h1>
       <p class="text-body-secondary mb-0">
         Gebündelte Transportaufträge — pro Fahrzeug eine Fahrt, mehrere Patienten möglich.
-        Kapazität: RTW 2 · KTW 1 · Taxi 2.
+        Kapazität: RTW 1 · KTW 1 · BTW 2 · Taxi 2.
       </p>
     </div>
     <a href="/" class="btn btn-outline-danger"><i class="bi bi-arrow-left"></i> Dashboard</a>
   </div>
 
+  <!-- KPIs (klickbar als Quick-Filter) -->
   <div class="row g-3 mb-3">
-    <div class="col-md-3"><div class="kpi-card">
+    <div class="col-md-3"><div class="kpi-card kpi-clickable" data-kpi-filter="ALL" style="cursor:pointer;">
       <div class="kpi-icon bg-danger-subtle text-danger-emphasis"><i class="bi bi-truck"></i></div>
       <div><div class="kpi-label">Fahrten gesamt</div><div class="kpi-value" id="kpi-total">—</div></div>
     </div></div>
-    <div class="col-md-2"><div class="kpi-card">
+    <div class="col-md-2"><div class="kpi-card kpi-clickable" data-kpi-filter="RTW" style="cursor:pointer;">
       <div class="kpi-icon bg-danger-subtle text-danger-emphasis"><i class="bi bi-bandaid-fill"></i></div>
       <div><div class="kpi-label">RTW <span class="text-body-secondary">· 1 Pat</span></div><div class="kpi-value" id="kpi-rtw">—</div></div>
     </div></div>
-    <div class="col-md-2"><div class="kpi-card">
+    <div class="col-md-2"><div class="kpi-card kpi-clickable" data-kpi-filter="KTW" style="cursor:pointer;">
       <div class="kpi-icon bg-warning-subtle text-warning-emphasis"><i class="bi bi-ambulance"></i></div>
       <div><div class="kpi-label">KTW <span class="text-body-secondary">· 1 Pat</span></div><div class="kpi-value" id="kpi-ktw">—</div></div>
     </div></div>
-    <div class="col-md-2"><div class="kpi-card">
+    <div class="col-md-2"><div class="kpi-card kpi-clickable" data-kpi-filter="BTW" style="cursor:pointer;">
       <div class="kpi-icon bg-info-subtle text-info-emphasis"><i class="bi bi-universal-access"></i></div>
       <div><div class="kpi-label">BTW <span class="text-body-secondary">· 2 Pat</span></div><div class="kpi-value" id="kpi-btw">—</div></div>
     </div></div>
-    <div class="col-md-2"><div class="kpi-card">
+    <div class="col-md-2"><div class="kpi-card kpi-clickable" data-kpi-filter="Taxi" style="cursor:pointer;">
       <div class="kpi-icon bg-primary-subtle text-primary-emphasis"><i class="bi bi-car-front-fill"></i></div>
       <div><div class="kpi-label">Taxi <span class="text-body-secondary">· 2 Pat</span></div><div class="kpi-value" id="kpi-taxi">—</div></div>
     </div></div>
+  </div>
+
+  <!-- Filter -->
+  <div class="card shadow-sm mb-3">
+    <div class="card-body py-2">
+      <div class="row g-2 align-items-end">
+        <div class="col-md-2">
+          <label class="form-label small fw-semibold mb-1">Fahrzeug</label>
+          <select class="form-select form-select-sm" id="f-vehicle">
+            <option value="">alle</option>
+            <option value="RTW">RTW</option>
+            <option value="KTW">KTW</option>
+            <option value="BTW">BTW</option>
+            <option value="Taxi">Taxi</option>
+          </select>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label small fw-semibold mb-1">SK-Stufe</label>
+          <select class="form-select form-select-sm" id="f-sk">
+            <option value="">alle</option>
+            <option value="SK1">SK1</option>
+            <option value="SK2">SK2</option>
+            <option value="SK3">SK3</option>
+          </select>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label small fw-semibold mb-1">Status</label>
+          <select class="form-select form-select-sm" id="f-status">
+            <option value="">alle</option>
+            <option value="geplant">geplant</option>
+            <option value="unterwegs">unterwegs</option>
+            <option value="abgeschlossen">abgeschlossen</option>
+          </select>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label small fw-semibold mb-1">Batch</label>
+          <select class="form-select form-select-sm" id="f-batch">
+            <option value="">alle</option>
+          </select>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label small fw-semibold mb-1">Suche</label>
+          <input type="text" class="form-control form-control-sm" id="f-search" placeholder="Klinik / Patient-ID / Fahrt-Code">
+        </div>
+        <div class="col-md-1">
+          <button class="btn btn-outline-secondary btn-sm w-100" id="f-reset" title="Filter zurücksetzen">
+            <i class="bi bi-arrow-counterclockwise"></i>
+          </button>
+        </div>
+      </div>
+      <div class="row g-2 mt-1 align-items-center">
+        <div class="col-md-6 d-flex gap-2">
+          <span class="small text-body-secondary">Sortiert nach</span>
+          <select class="form-select form-select-sm" id="f-sort" style="max-width: 200px;">
+            <option value="sk">SK-Priorität</option>
+            <option value="abfahrt">Abfahrtszeit</option>
+            <option value="ankunft">Ankunftszeit</option>
+            <option value="distanz">Entfernung</option>
+            <option value="code">Fahrt-Code</option>
+          </select>
+        </div>
+        <div class="col-md-6 text-end small text-body-secondary">
+          <span id="f-count">—</span>
+        </div>
+      </div>
+    </div>
   </div>
 
   <div class="card shadow-sm">
@@ -53,7 +120,7 @@
               <th>Ankunft</th>
               <th class="text-end">km</th>
               <th class="text-end">min</th>
-              <th>Route</th>
+              <th>Status</th>
             </tr>
           </thead>
           <tbody>
@@ -72,25 +139,48 @@
   const esc = s => (s ?? "").toString().replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"})[c]);
   const fmtDt = s => s ? new Date(s).toLocaleString("de-DE", {dateStyle:"short", timeStyle:"short"}) : "—";
 
-  const f = await fetch("/api/fahrten").then(r => r.json());
-  const kpi = (id, v) => document.getElementById(id).textContent = v.toLocaleString("de-DE");
-  kpi("kpi-total", f.length);
-  kpi("kpi-rtw", f.filter(x => x.transportmittel === "RTW").length);
-  kpi("kpi-ktw", f.filter(x => x.transportmittel === "KTW").length);
-  kpi("kpi-btw", f.filter(x => x.transportmittel === "BTW").length);
-  kpi("kpi-taxi", f.filter(x => x.transportmittel === "Taxi").length);
+  const [fahrten, batches] = await Promise.all([
+    fetch("/api/fahrten").then(r => r.json()),
+    fetch("/api/batches").then(r => r.json()),
+  ]);
 
-  const tbody = document.querySelector("#f-table tbody");
-  if (!f.length) {
-    tbody.innerHTML = `<tr><td colspan="10" class="text-center text-body-secondary py-4">
-      Keine Fahrten — zuerst Patienten verteilen.</td></tr>`;
-    return;
+  const kpi = (id, v) => document.getElementById(id).textContent = v.toLocaleString("de-DE");
+
+  function updateKPIs(filtered, all) {
+    kpi("kpi-total", all.length);
+    kpi("kpi-rtw",  all.filter(x => x.transportmittel === "RTW").length);
+    kpi("kpi-ktw",  all.filter(x => x.transportmittel === "KTW").length);
+    kpi("kpi-btw",  all.filter(x => x.transportmittel === "BTW").length);
+    kpi("kpi-taxi", all.filter(x => x.transportmittel === "Taxi").length);
   }
-  tbody.innerHTML = f.map(x => {
-    const vehicle = x.transportmittel === "RTW" ? '<span class="badge bg-danger">RTW</span>'
-      : x.transportmittel === "KTW" ? '<span class="badge bg-warning text-dark">KTW</span>'
-      : x.transportmittel === "BTW" ? '<span class="badge bg-info text-dark">BTW</span>'
-      : '<span class="badge bg-primary">Taxi</span>';
+  updateKPIs(fahrten, fahrten);
+
+  // Batch-Dropdown
+  const bSel = document.getElementById("f-batch");
+  batches.forEach(b => {
+    const o = document.createElement("option");
+    o.value = b.id;
+    o.textContent = `#${b.id} — ${b.filename} (${b.total} Pat)`;
+    bSel.appendChild(o);
+  });
+
+  function vehicleBadge(tm) {
+    return tm === "RTW"  ? '<span class="badge bg-danger">RTW</span>'
+         : tm === "KTW"  ? '<span class="badge bg-warning text-dark">KTW</span>'
+         : tm === "BTW"  ? '<span class="badge bg-info text-dark">BTW</span>'
+         : tm === "Taxi" ? '<span class="badge bg-primary">Taxi</span>'
+         : `<span class="badge bg-secondary">${esc(tm || "?")}</span>`;
+  }
+
+  function statusBadge(s) {
+    const m = {
+      "geplant": "secondary", "unterwegs": "warning text-dark",
+      "abgeschlossen": "success",
+    };
+    return `<span class="badge bg-${m[s] || 'dark'}">${esc(s || "—")}</span>`;
+  }
+
+  function renderRow(x) {
     const pat = (x.patienten || []).map(p => {
       const sk = "sk" + (p.sk || "").replace("SK", "");
       return `<a href="/patients/${p.patient_id}" class="badge sk-badge ${sk} text-decoration-none me-1" title="${esc(p.external_id)}">${esc(p.external_id || ("#"+p.patient_id))}</a>`;
@@ -100,7 +190,7 @@
     return `
       <tr>
         <td><a href="/fahrten/${x.id}" class="text-decoration-none fw-semibold">${esc(x.fahrt_code)}</a></td>
-        <td>${vehicle}</td>
+        <td>${vehicleBadge(x.transportmittel)}</td>
         <td class="${full}">${util}</td>
         <td><a href="/krankenhaus/${x.ziel.id}" class="text-decoration-none text-body">${esc(x.ziel.name)}</a>
           <div class="small text-body-secondary">${esc(x.ziel.ort || "")}</div></td>
@@ -109,9 +199,89 @@
         <td class="small">${fmtDt(x.ankunft)}</td>
         <td class="text-end">${x.distanz_km?.toFixed(1) ?? "–"}</td>
         <td class="text-end">${x.dauer_min ? Math.round(x.dauer_min) : "–"}</td>
-        <td><span class="badge bg-secondary">${esc(x.routing_source || "")}</span></td>
+        <td>${statusBadge(x.status)}</td>
       </tr>`;
-  }).join("");
+  }
+
+  function applyFilters() {
+    const veh = document.getElementById("f-vehicle").value;
+    const sk = document.getElementById("f-sk").value;
+    const status = document.getElementById("f-status").value;
+    const batch = document.getElementById("f-batch").value;
+    const q = document.getElementById("f-search").value.trim().toLowerCase();
+    const sort = document.getElementById("f-sort").value;
+
+    let list = fahrten.slice();
+    if (veh) list = list.filter(x => x.transportmittel === veh);
+    if (sk) list = list.filter(x => (x.patienten || []).some(p => p.sk === sk));
+    if (status) list = list.filter(x => (x.status || "") === status);
+    if (batch) list = list.filter(x => String(x.batch_id || "") === String(batch));
+    if (q) {
+      list = list.filter(x => {
+        const hay = [x.fahrt_code || "", x.ziel?.name || "", x.ziel?.ort || "",
+                     ...(x.patienten || []).map(p => p.external_id || "")].join(" ").toLowerCase();
+        return hay.includes(q);
+      });
+    }
+
+    const sk_prio = {"SK1":0, "SK2":1, "SK3":2};
+    list.sort((a, b) => {
+      if (sort === "abfahrt") return (a.abfahrt || "").localeCompare(b.abfahrt || "");
+      if (sort === "ankunft") return (a.ankunft || "").localeCompare(b.ankunft || "");
+      if (sort === "distanz") return (a.distanz_km || 0) - (b.distanz_km || 0);
+      if (sort === "code")    return (a.fahrt_code || "").localeCompare(b.fahrt_code || "");
+      // sk-Priorität: SK1 zuerst
+      const aSk = Math.min(...(a.patienten || [{sk:"SK3"}]).map(p => sk_prio[p.sk] ?? 3));
+      const bSk = Math.min(...(b.patienten || [{sk:"SK3"}]).map(p => sk_prio[p.sk] ?? 3));
+      return aSk - bSk || (a.distanz_km || 0) - (b.distanz_km || 0);
+    });
+
+    const tbody = document.querySelector("#f-table tbody");
+    if (!list.length) {
+      tbody.innerHTML = `<tr><td colspan="10" class="text-center text-body-secondary py-4">
+        Keine Treffer. <button class="btn btn-sm btn-link p-0 align-baseline" onclick="document.getElementById('f-reset').click()">Filter zurücksetzen</button></td></tr>`;
+    } else {
+      tbody.innerHTML = list.map(renderRow).join("");
+    }
+    document.getElementById("f-count").innerHTML =
+      `<strong>${list.length}</strong> von ${fahrten.length} Fahrten`;
+  }
+
+  // Events
+  ["f-vehicle","f-sk","f-status","f-batch","f-sort"].forEach(id =>
+    document.getElementById(id).addEventListener("change", applyFilters));
+  let searchTm;
+  document.getElementById("f-search").addEventListener("input", () => {
+    clearTimeout(searchTm); searchTm = setTimeout(applyFilters, 150);
+  });
+  document.getElementById("f-reset").addEventListener("click", () => {
+    ["f-vehicle","f-sk","f-status","f-batch","f-search"].forEach(id =>
+      document.getElementById(id).value = "");
+    document.getElementById("f-sort").value = "sk";
+    applyFilters();
+  });
+
+  // KPI-Kachel-Klick = Quick-Filter
+  document.querySelectorAll(".kpi-clickable").forEach(card => {
+    card.addEventListener("click", () => {
+      const v = card.dataset.kpiFilter;
+      document.getElementById("f-vehicle").value = (v === "ALL" ? "" : v);
+      applyFilters();
+      card.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  });
+
+  // Initialer Render
+  if (!fahrten.length) {
+    document.querySelector("#f-table tbody").innerHTML = `
+      <tr><td colspan="10" class="text-center text-body-secondary py-4">
+        Keine Fahrten — zuerst Patienten verteilen (<a href="/">Dashboard</a>
+        oder <a href="/timecapsule">Time-Capsule</a>).
+      </td></tr>`;
+    document.getElementById("f-count").textContent = "0 Fahrten";
+  } else {
+    applyFilters();
+  }
 })();
 </script>
 {% endblock %}
