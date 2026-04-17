@@ -103,35 +103,51 @@ def _set_grundbelegung(prozent: int, rng: random.Random, bundesland_ids: set[int
     db.session.commit()
 
 
+RADIUS_RINGS_KM = [10, 30, 50, 70, 100, 150, 250, 500, 1000]
+
+
 def _pick_target_kh(sk: str, hub: Hub, rng: random.Random,
-                    bundesland: str | None = None) -> tuple[Krankenhaus, KrankenhausBelegung, float] | None:
+                    bundesland: str | None = None,
+                    candidates_cache: list | None = None) -> tuple[Krankenhaus, KrankenhausBelegung, float, int] | None:
     """Wähle eine Klinik mit freier Kapazität für diese SK-Stufe.
 
-    Strategie: nach Distanz zum Hub sortieren, erste mit Kapazität nehmen.
-    Bei bundesland-Filter werden nur Kliniken des Bundeslands betrachtet.
+    Strategie: **Expanding Radius Rings** — erst 10 km, dann 30 km, 50, 70, 100 …
+    Innerhalb jedes Rings wird die nächste Klinik mit freier Kapazität genommen.
+    Erst wenn kein Kandidat im Ring vorhanden ist, wird der nächste Ring versucht.
+
+    Rückgabe: (kh, bel, distanz_km, ring_km). ring_km = der Ring, aus dem die Klinik kam.
     """
     from .dispatch import SK_KANN_COLS
     from sqlalchemy import or_
 
-    ors = [getattr(Krankenhaus, c) == True for c in SK_KANN_COLS[sk]]  # noqa: E712
-    q = (
-        db.session.query(Krankenhaus, KrankenhausBelegung)
-        .join(KrankenhausBelegung, KrankenhausBelegung.krankenhaus_id == Krankenhaus.id)
-        .filter(Krankenhaus.lat.isnot(None))
-        .filter(Krankenhaus.ausgeschlossen == False)  # noqa: E712
-        .filter(or_(*ors))
-    )
-    if bundesland:
-        q = q.filter(Krankenhaus.bundesland == bundesland)
-    candidates = q.all()
-    ranked = []
-    for kh, bel in candidates:
-        d = haversine_km(hub.lat, hub.lon, kh.lat, kh.lon)
-        ranked.append((kh, bel, d))
-    ranked.sort(key=lambda t: t[2])
-    for kh, bel, d in ranked:
+    if candidates_cache is None:
+        ors = [getattr(Krankenhaus, c) == True for c in SK_KANN_COLS[sk]]  # noqa: E712
+        q = (
+            db.session.query(Krankenhaus, KrankenhausBelegung)
+            .join(KrankenhausBelegung, KrankenhausBelegung.krankenhaus_id == Krankenhaus.id)
+            .filter(Krankenhaus.lat.isnot(None))
+            .filter(Krankenhaus.ausgeschlossen == False)  # noqa: E712
+            .filter(or_(*ors))
+        )
+        if bundesland:
+            q = q.filter(Krankenhaus.bundesland == bundesland)
+        candidates = q.all()
+        ranked = [(kh, bel, haversine_km(hub.lat, hub.lon, kh.lat, kh.lon))
+                  for kh, bel in candidates]
+        ranked.sort(key=lambda t: t[2])
+        candidates_cache = ranked  # type: ignore[assignment]
+
+    # Ring für Ring durchgehen
+    for ring in RADIUS_RINGS_KM:
+        for kh, bel, d in candidates_cache:  # type: ignore[union-attr]
+            if d > ring:
+                break  # sortiert — Rest ist ausserhalb
+            if bel.frei(sk) > 0:
+                return kh, bel, d, ring
+    # Fallback: ausserhalb des größten Rings (sehr weit)
+    for kh, bel, d in candidates_cache:  # type: ignore[union-attr]
         if bel.frei(sk) > 0:
-            return kh, bel, d
+            return kh, bel, d, int(d)
     return None
 
 
@@ -184,6 +200,29 @@ def run_capsule(params: CapsuleParams) -> dict:
     events_a01 = events_a03 = 0
     admits_per_day: dict[int, int] = {}
     discharges_per_day: dict[int, int] = {}
+    # Pro-Klinik-Tracking: total_aufnahmen, peak_bel_total, ring_usage (wie oft aus welchem Ring)
+    kh_stats: dict[int, dict] = {}
+    ring_usage: dict[int, int] = {r: 0 for r in RADIUS_RINGS_KM}
+
+    # Einmal die Kandidatenlisten pro SK vorberechnen (Performance)
+    from .dispatch import SK_KANN_COLS
+    from sqlalchemy import or_
+    kh_candidates: dict[str, list] = {}
+    for sk in ("SK1", "SK2", "SK3"):
+        ors = [getattr(Krankenhaus, c) == True for c in SK_KANN_COLS[sk]]  # noqa: E712
+        q = (
+            db.session.query(Krankenhaus, KrankenhausBelegung)
+            .join(KrankenhausBelegung, KrankenhausBelegung.krankenhaus_id == Krankenhaus.id)
+            .filter(Krankenhaus.lat.isnot(None))
+            .filter(Krankenhaus.ausgeschlossen == False)  # noqa: E712
+            .filter(or_(*ors))
+        )
+        if params.bundesland:
+            q = q.filter(Krankenhaus.bundesland == params.bundesland)
+        ranked = [(kh, bel, haversine_km(hub.lat, hub.lon, kh.lat, kh.lon))
+                  for kh, bel in q.all()]
+        ranked.sort(key=lambda t: t[2])
+        kh_candidates[sk] = ranked
 
     sim_time = start
     patient_idx = 0
@@ -252,12 +291,22 @@ def run_capsule(params: CapsuleParams) -> dict:
             batch.total += 1
             setattr(batch, sk.lower(), getattr(batch, sk.lower()) + 1)
 
-            pick = _pick_target_kh(sk, hub, rng, params.bundesland)
+            pick = _pick_target_kh(sk, hub, rng, params.bundesland,
+                                   candidates_cache=kh_candidates[sk])
             if pick is None:
                 p.status = "unassigned"
                 unassigned += 1
                 continue
-            kh, bel, dist = pick
+            kh, bel, dist, ring = pick
+            ring_usage[ring] = ring_usage.get(ring, 0) + 1
+            st = kh_stats.setdefault(kh.id, {
+                "name": kh.name, "ort": kh.ort, "plz": kh.plz,
+                "bundesland": kh.bundesland, "lat": kh.lat, "lon": kh.lon,
+                "aufnahmen": 0, "peak_bel_total": 0, "distanz_km": round(dist, 1),
+                "sk": {"SK1": 0, "SK2": 0, "SK3": 0},
+            })
+            st["aufnahmen"] += 1
+            st["sk"][sk] += 1
 
             # Aufnehmen
             col = f"belegung_{sk.lower()}"
@@ -315,6 +364,21 @@ def run_capsule(params: CapsuleParams) -> dict:
 
     db.session.commit()
 
+    # Peak-Belegung pro KH am Ende der Simulation ablesen
+    for kh_id, st in kh_stats.items():
+        bel = db.session.get(KrankenhausBelegung, kh_id)
+        if bel:
+            tot_cap = (bel.kapazitaet_sk1 or 0) + (bel.kapazitaet_sk2 or 0) + (bel.kapazitaet_sk3 or 0)
+            tot_bel = (bel.belegung_sk1 or 0) + (bel.belegung_sk2 or 0) + (bel.belegung_sk3 or 0)
+            st["peak_bel_total"] = tot_bel
+            st["kapazitaet_total"] = tot_cap
+            st["auslastung_pct"] = round(tot_bel / tot_cap * 100, 1) if tot_cap else 0.0
+
+    top_kliniken = sorted(
+        [{"id": kh_id, **st} for kh_id, st in kh_stats.items()],
+        key=lambda x: x["aufnahmen"], reverse=True,
+    )[:20]
+
     daily_summary = _compute_daily_summary(
         snapshots, start, params.days, admits_per_day, discharges_per_day,
     )
@@ -341,6 +405,8 @@ def run_capsule(params: CapsuleParams) -> dict:
         "peak_when": peak_when,
         "daily_summary": daily_summary,
         "snapshots": snapshots,
+        "top_kliniken": top_kliniken,
+        "ring_usage": ring_usage,
     }
 
 

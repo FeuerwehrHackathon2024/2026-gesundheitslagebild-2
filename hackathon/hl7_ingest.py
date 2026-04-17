@@ -25,6 +25,24 @@ log = logging.getLogger(__name__)
 
 SEGMENT_SEP_CANDIDATES = ("\r\n", "\r", "\n")
 
+# Fachabteilungs-Code → MANV-Sichtungskategorie.
+# MANV-Semantik (SK1=vital, SK2=schwer stabil, SK3=leicht).
+# Erweiterbar; unbekannte Codes fallen auf None → Random.
+FA_TO_SK: dict[str, str] = {
+    # SK1 — vital / Akutversorgung Hochstufe
+    "ITS":    "SK1", "INTENSIV": "SK1", "SCHOCK": "SK1", "SCHOCKRAUM": "SK1",
+    "NOTAUF": "SK1", "NOTFALL":  "SK1", "HERZKAT": "SK1", "STROKE":   "SK1",
+    "NCHIR":  "SK1", "NEUROCH":  "SK1",
+    # SK2 — schwer verletzt, IMC / OP
+    "UNF":    "SK2", "UNFALL":   "SK2", "TRAUMA":  "SK2", "CHIR":     "SK2",
+    "ALGCHIR":"SK2", "VIS":      "SK2", "VISZ":    "SK2", "KAR":      "SK2",
+    "PNE":    "SK2", "IMC":      "SK2", "GEFCHIR": "SK2",
+    # SK3 — leicht verletzt, Regelversorgung
+    "ORT":    "SK3", "ORTHO":    "SK3", "HNO":     "SK3", "AUGE":     "SK3",
+    "INNERE": "SK3", "ONK":      "SK3", "AMB":     "SK3", "AOP":      "SK3",
+    "DERMA":  "SK3",
+}
+
 
 def _split_segments(raw: str) -> list[list[str]]:
     text = raw

@@ -193,13 +193,47 @@
         </div>
       </div>
 
-      <div class="tc-card">
+      <div class="tc-card mb-3">
         <h2><i class="bi bi-graph-up-arrow"></i> Auslastung über Zeit (% der Kapazität)</h2>
         <div style="position: relative; height: 300px;">
           <canvas id="tc-chart"></canvas>
         </div>
         <div class="small text-body-secondary mt-2">
           Y-Achse: <strong>Bettenbelegung in % der Kapazität</strong> pro SK-Stufe — so sind SK1/SK2/SK3 direkt vergleichbar, obwohl die absoluten Kapazitäten sehr unterschiedlich sind (SK1 ~19 k · SK3 ~210 k).
+        </div>
+      </div>
+
+      <div class="row g-3">
+        <div class="col-md-7">
+          <div class="tc-card">
+            <h2><i class="bi bi-hospital-fill"></i> Top-Kliniken (meiste Aufnahmen)</h2>
+            <div class="small text-body-secondary mb-2">Klickbar → Klinik-Sicht</div>
+            <div class="table-responsive" style="max-height: 340px; overflow-y: auto;">
+              <table class="table table-sm mb-0 align-middle small" id="tc-top">
+                <thead class="table-light sticky-top">
+                  <tr>
+                    <th>Klinik</th>
+                    <th>Ort</th>
+                    <th class="text-end">km zum Hub</th>
+                    <th class="text-end">Aufn.</th>
+                    <th class="text-end">SK1·2·3</th>
+                    <th class="text-end">Endbelegung</th>
+                  </tr>
+                </thead>
+                <tbody><tr><td colspan="6" class="text-center text-body-secondary py-3">—</td></tr></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-5">
+          <div class="tc-card h-100">
+            <h2><i class="bi bi-bullseye"></i> Radius-Ring-Nutzung</h2>
+            <div class="small text-body-secondary mb-2">
+              Expanding-Dispatch: erst 10 km, dann 30, 50, 70, 100 … Wie viele Patienten
+              wurden aus welchem Ring versorgt?
+            </div>
+            <div id="tc-rings"></div>
+          </div>
         </div>
       </div>
     </div>
@@ -438,6 +472,8 @@
       stateTC.daily = j.daily_summary || [];
 
       renderDayTiles(stateTC.daily);
+      renderTopKliniken(j.top_kliniken || []);
+      renderRings(j.ring_usage || {});
 
       document.getElementById("tc-scrub").max = Math.max(0, stateTC.snapshots.length - 1);
       setFrame(0);
@@ -449,6 +485,51 @@
       btn.disabled = false;
       btn.innerHTML = '<i class="bi bi-play-fill"></i> Simulation starten';
     }
+  }
+
+  function renderTopKliniken(list) {
+    const tb = document.querySelector("#tc-top tbody");
+    if (!list.length) {
+      tb.innerHTML = `<tr><td colspan="6" class="text-center text-body-secondary py-3">Keine Daten</td></tr>`;
+      return;
+    }
+    tb.innerHTML = list.map(k => {
+      const aus = k.auslastung_pct ?? 0;
+      const cls = pctClass(aus);
+      return `
+        <tr>
+          <td><a href="/krankenhaus/${k.id}" class="text-decoration-none fw-semibold">${esc(k.name)}</a></td>
+          <td class="text-body-secondary">${esc(k.ort || "")}</td>
+          <td class="text-end">${(k.distanz_km || 0).toFixed(0)}</td>
+          <td class="text-end fw-semibold">${k.aufnahmen}</td>
+          <td class="text-end small">
+            <span class="text-danger">${k.sk.SK1}</span> ·
+            <span style="color:#f57c00">${k.sk.SK2}</span> ·
+            <span style="color:#b39000">${k.sk.SK3}</span>
+          </td>
+          <td class="text-end"><span class="tc-pct-chip ${cls}">${k.peak_bel_total}/${k.kapazitaet_total} · ${aus.toFixed(0)}%</span></td>
+        </tr>`;
+    }).join("");
+  }
+
+  function renderRings(usage) {
+    const rings = [10, 30, 50, 70, 100, 150, 250, 500, 1000];
+    const total = Object.values(usage).reduce((a, b) => a + b, 0) || 1;
+    const host = document.getElementById("tc-rings");
+    host.innerHTML = rings.map(r => {
+      const n = usage[r] || 0;
+      const pct = (n / total * 100);
+      return `
+        <div class="mb-2">
+          <div class="small d-flex justify-content-between">
+            <span>≤ ${r} km</span>
+            <span><strong>${n}</strong> Patienten · ${pct.toFixed(0)}%</span>
+          </div>
+          <div class="progress" style="height: 10px;">
+            <div class="progress-bar" style="width:${pct}%; background:#c62828;"></div>
+          </div>
+        </div>`;
+    }).join("");
   }
 
   document.getElementById("tc-run").addEventListener("click", runSimulation);
