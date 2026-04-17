@@ -5,8 +5,15 @@ from .extensions import db
 
 class Krankenhaus(db.Model):
     __tablename__ = "krankenhaus"
+    __table_args__ = (
+        db.Index("ix_krankenhaus_ik", "ik"),
+        db.Index("ix_krankenhaus_plz", "plz"),
+        db.Index("ix_krankenhaus_sk_max", "sk_max"),
+        db.Index("ix_krankenhaus_geo", "lat", "lon"),
+    )
 
-    ik = db.Column(db.String(32), primary_key=True)
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    ik = db.Column(db.String(32), nullable=True)
     standortnummer = db.Column(db.String(32), nullable=True)
     name = db.Column(db.String(255), nullable=False)
     name_norm = db.Column(db.String(255), nullable=True)

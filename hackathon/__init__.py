@@ -15,8 +15,24 @@ def create_app(config_class: type[Config] = Config) -> Flask:
 
     app.register_blueprint(main_bp)
 
-    # Import models after extension initialization so SQLAlchemy can register metadata.
     from . import models  # noqa: F401
 
-    return app
+    from .seed import seed_if_empty, seed_krankenhaus
 
+    @app.cli.command("seed-krankenhaus")
+    def _seed_cmd():
+        """Krankenhaus-CSV in die DB importieren (nur wenn leer)."""
+        n = seed_krankenhaus(force=False)
+        click_echo = app.cli.echo if hasattr(app.cli, "echo") else print
+        click_echo(f"Eingefügt: {n}")
+
+    @app.cli.command("reseed-krankenhaus")
+    def _reseed_cmd():
+        """Tabelle leeren und komplett neu aus CSV befüllen."""
+        n = seed_krankenhaus(force=True)
+        print(f"Reseeded: {n}")
+
+    if not app.config.get("TESTING"):
+        seed_if_empty(app)
+
+    return app
