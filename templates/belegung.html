@@ -1,0 +1,180 @@
+{% extends "base.html" %}
+
+{% block title %}Belegung · MANV-Dispatch{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+  <div class="d-flex justify-content-between align-items-start mb-3">
+    <div>
+      <h1 class="h3 mb-1"><i class="bi bi-bar-chart-fill text-danger"></i> Krankenhaus-Belegung</h1>
+      <p class="text-body-secondary mb-0">
+        Wie füllt sich jede Klinik? Grundbelegung (Simulation) + Verteilung (Dispatch).
+      </p>
+    </div>
+    <a href="/" class="btn btn-outline-danger"><i class="bi bi-arrow-left"></i> Dashboard</a>
+  </div>
+
+  <!-- Totals -->
+  <div id="totals-row" class="row g-3 mb-3">
+    <div class="col-md-4">
+      <div class="card shadow-sm border-0"><div class="card-body">
+        <div class="small text-body-secondary text-uppercase fw-semibold">SK1</div>
+        <div class="progress my-2" style="height:18px" id="bar-sk1"></div>
+        <div class="small" id="txt-sk1">—</div>
+      </div></div>
+    </div>
+    <div class="col-md-4">
+      <div class="card shadow-sm border-0"><div class="card-body">
+        <div class="small text-body-secondary text-uppercase fw-semibold">SK2</div>
+        <div class="progress my-2" style="height:18px" id="bar-sk2"></div>
+        <div class="small" id="txt-sk2">—</div>
+      </div></div>
+    </div>
+    <div class="col-md-4">
+      <div class="card shadow-sm border-0"><div class="card-body">
+        <div class="small text-body-secondary text-uppercase fw-semibold">SK3</div>
+        <div class="progress my-2" style="height:18px" id="bar-sk3"></div>
+        <div class="small" id="txt-sk3">—</div>
+      </div></div>
+    </div>
+  </div>
+
+  <!-- Filter -->
+  <div class="card shadow-sm mb-3">
+    <div class="card-body py-2">
+      <div class="row g-2 align-items-center">
+        <div class="col-auto small text-body-secondary fw-semibold">Zeige</div>
+        <div class="col-auto">
+          <select class="form-select form-select-sm" id="filter-show">
+            <option value="with_dispatch">nur Kliniken mit Verteilung</option>
+            <option value="all">alle Kliniken</option>
+          </select>
+        </div>
+        <div class="col-auto">
+          <input type="text" class="form-control form-control-sm" id="filter-search" placeholder="Name/Ort suchen…">
+        </div>
+        <div class="col-auto ms-auto small text-body-secondary">
+          <span id="filter-count">—</span> Kliniken
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tabelle -->
+  <div class="card shadow-sm">
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-hover mb-0 align-middle small" id="bel-table">
+          <thead class="table-light sticky-top">
+            <tr>
+              <th rowspan="2" style="min-width: 220px">Klinik</th>
+              <th rowspan="2">Ort</th>
+              <th colspan="4" class="text-center border-start bg-danger-subtle">SK1</th>
+              <th colspan="4" class="text-center border-start" style="background:#ffe8cc">SK2</th>
+              <th colspan="4" class="text-center border-start" style="background:#fff4cc">SK3</th>
+            </tr>
+            <tr>
+              <th class="text-end border-start small">Grund</th>
+              <th class="text-end small">+Disp</th>
+              <th class="text-end small">Σ</th>
+              <th class="text-end small">/Kap</th>
+              <th class="text-end border-start small">Grund</th>
+              <th class="text-end small">+Disp</th>
+              <th class="text-end small">Σ</th>
+              <th class="text-end small">/Kap</th>
+              <th class="text-end border-start small">Grund</th>
+              <th class="text-end small">+Disp</th>
+              <th class="text-end small">Σ</th>
+              <th class="text-end small">/Kap</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td colspan="14" class="text-center text-body-secondary py-4">
+              <span class="spinner-border spinner-border-sm me-1"></span> Lade…
+            </td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  const esc = s => (s ?? "").toString().replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"})[c]);
+  let allData = [];
+
+  function fmtCell(grund, disp, kap) {
+    const total = grund + disp;
+    const pct = kap > 0 ? Math.round(total / kap * 100) : 0;
+    const cls = pct >= 100 ? "text-danger fw-semibold" : pct >= 80 ? "text-warning fw-semibold" : "text-body";
+    return `
+      <td class="text-end border-start text-body-secondary">${grund || "–"}</td>
+      <td class="text-end text-danger-emphasis">${disp ? "+"+disp : "–"}</td>
+      <td class="text-end fw-semibold">${total}</td>
+      <td class="text-end ${cls}">${kap > 0 ? pct + "%" : "–"}</td>
+    `;
+  }
+
+  function render() {
+    const show = document.getElementById("filter-show").value;
+    const q = document.getElementById("filter-search").value.trim().toLowerCase();
+    let rows = allData;
+    if (show === "with_dispatch") {
+      rows = rows.filter(r => (r.dispatch.SK1 + r.dispatch.SK2 + r.dispatch.SK3) > 0);
+    }
+    if (q) {
+      rows = rows.filter(r => (r.name+" "+r.ort).toLowerCase().includes(q));
+    }
+    document.getElementById("filter-count").textContent = rows.length.toLocaleString("de-DE");
+    const tbody = document.querySelector("#bel-table tbody");
+    if (!rows.length) {
+      tbody.innerHTML = `<tr><td colspan="14" class="text-center text-body-secondary py-4">Keine Kliniken gefunden</td></tr>`;
+      return;
+    }
+    tbody.innerHTML = rows.slice(0, 300).map(r => {
+      const excludedBadge = r.ausgeschlossen ? `<i class="bi bi-x-circle-fill text-danger ms-1" title="ausgeschlossen"></i>` : "";
+      return `
+        <tr>
+          <td class="fw-semibold">${esc(r.name)}${excludedBadge}</td>
+          <td>${esc(r.ort || "")}</td>
+          ${fmtCell(r.grundbelegung.SK1, r.dispatch.SK1, r.kapazitaet.SK1)}
+          ${fmtCell(r.grundbelegung.SK2, r.dispatch.SK2, r.kapazitaet.SK2)}
+          ${fmtCell(r.grundbelegung.SK3, r.dispatch.SK3, r.kapazitaet.SK3)}
+        </tr>`;
+    }).join("");
+  }
+
+  function renderTotals(rows) {
+    for (const sk of ["SK1", "SK2", "SK3"]) {
+      const cap = rows.reduce((s, r) => s + r.kapazitaet[sk], 0);
+      const grund = rows.reduce((s, r) => s + r.grundbelegung[sk], 0);
+      const disp = rows.reduce((s, r) => s + r.dispatch[sk], 0);
+      const total = grund + disp;
+      const pctG = cap ? (grund / cap * 100) : 0;
+      const pctD = cap ? (disp / cap * 100) : 0;
+      const bar = document.getElementById("bar-" + sk.toLowerCase());
+      const color = sk === "SK1" ? "#b71c1c" : sk === "SK2" ? "#f57c00" : "#fbc02d";
+      bar.innerHTML = `
+        <div class="progress-bar" role="progressbar" style="width:${pctG}%; background:${color}; opacity:0.55" title="Grundbelegung">${pctG >= 8 ? Math.round(pctG)+"%" : ""}</div>
+        <div class="progress-bar" role="progressbar" style="width:${pctD}%; background:${color}" title="Dispatch">${pctD >= 6 ? "+"+Math.round(pctD)+"%" : ""}</div>
+      `;
+      document.getElementById("txt-" + sk.toLowerCase()).innerHTML =
+        `Grund: <strong>${grund.toLocaleString("de-DE")}</strong> · ` +
+        `Disp: <strong class="text-danger">+${disp.toLocaleString("de-DE")}</strong> · ` +
+        `Frei: <strong>${(cap-total).toLocaleString("de-DE")}</strong> von ${cap.toLocaleString("de-DE")}`;
+    }
+  }
+
+  async function load() {
+    allData = await fetch("/api/belegung").then(r => r.json());
+    renderTotals(allData);
+    render();
+  }
+
+  document.getElementById("filter-show").addEventListener("change", render);
+  document.getElementById("filter-search").addEventListener("input", render);
+  load();
+})();
+</script>
+{% endblock %}

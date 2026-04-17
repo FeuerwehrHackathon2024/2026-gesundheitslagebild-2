@@ -51,14 +51,23 @@
             </a>
           </li>
           <li class="nav-item">
+            <a class="nav-link {% if request.endpoint=='main.belegung_page' %}active{% endif %}" href="/belegung">
+              <i class="bi bi-bar-chart-fill me-1"></i> Belegung
+            </a>
+          </li>
+          <li class="nav-item">
             <a class="nav-link {% if request.endpoint=='main.batches_page' %}active{% endif %}" href="/batches">
               <i class="bi bi-folder2-open me-1"></i> Verläufe
             </a>
           </li>
-          <li class="nav-item">
-            <a class="nav-link {% if request.endpoint=='main.info_page' %}active{% endif %}" href="/info">
-              <i class="bi bi-info-circle me-1"></i> Info
+          <li class="nav-item dropdown">
+            <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown">
+              <i class="bi bi-three-dots me-1"></i>
             </a>
+            <ul class="dropdown-menu">
+              <li><a class="dropdown-item" href="/ivena-matching"><i class="bi bi-diagram-3"></i> IVENA-Matching</a></li>
+              <li><a class="dropdown-item" href="/info"><i class="bi bi-info-circle"></i> Info</a></li>
+            </ul>
           </li>
         </ul>
 

@@ -1,0 +1,157 @@
+{% extends "base.html" %}
+
+{% block title %}IVENA ↔ SK Matching · MANV-Dispatch{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+  <div class="d-flex justify-content-between align-items-start mb-3">
+    <div>
+      <h1 class="h3 mb-1"><i class="bi bi-diagram-3-fill text-danger"></i> IVENA ↔ Sichtungskategorie</h1>
+      <p class="text-body-secondary mb-0">
+        Zuordnung der IVENA-Notation (MANV-Kategorien, Farben, Fachbereiche) zu unseren SK-Stufen.
+      </p>
+    </div>
+    <a href="/" class="btn btn-outline-danger"><i class="bi bi-arrow-left"></i> Dashboard</a>
+  </div>
+
+  <!-- Haupt-Mapping -->
+  <div class="card shadow-sm mb-4">
+    <div class="card-header">
+      <h2 class="h6 mb-0"><i class="bi bi-arrow-left-right"></i> MANV-Kategorie → SK</h2>
+    </div>
+    <div class="card-body p-0">
+      <table class="table mb-0 align-middle">
+        <thead class="table-light">
+          <tr>
+            <th>SK</th>
+            <th>IVENA (röm.)</th>
+            <th>Farbe</th>
+            <th>T-Code</th>
+            <th>Aufenthaltsdauer</th>
+            <th>Transportmittel</th>
+            <th>Bedeutung</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for sk, roman, bedeutung, dauer in [
+            ("SK1", "I",   "vital gefährdet / akut lebensbedrohlich",    "5 Tage"),
+            ("SK2", "II",  "schwer verletzt, stabil / dringlich",        "3 Tage"),
+            ("SK3", "III", "leicht verletzt / aufgeschobene Behandlung", "1 Tag"),
+          ] %}
+          <tr>
+            <td><span class="badge sk-badge sk{{ sk[-1] }} fs-6">{{ sk }}</span></td>
+            <td class="fw-semibold fs-5">{{ roman }}</td>
+            <td>
+              <span class="d-inline-block rounded me-1" style="width:14px;height:14px;vertical-align:middle;background:{{ sk_farbe[sk].hex }}"></span>
+              {{ sk_farbe[sk].farbe }}
+            </td>
+            <td><code>{{ sk_farbe[sk].kuerzel }}</code></td>
+            <td>{{ dauer }}</td>
+            <td>
+              <strong>{{ sk_transport[sk].code }}</strong>
+              <span class="text-body-secondary small">— {{ sk_transport[sk].name }}</span>
+            </td>
+            <td class="small">{{ bedeutung }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Akzeptierte Input-Begriffe -->
+  <div class="card shadow-sm mb-4">
+    <div class="card-header">
+      <h2 class="h6 mb-0"><i class="bi bi-input-cursor-text"></i> Akzeptierte Eingabe-Varianten</h2>
+      <small class="text-body-secondary">Welche Werte in der XLSX-Spalte <code>SK</code> werden wie interpretiert?</small>
+    </div>
+    <div class="card-body">
+      <div class="row g-3">
+        {% for sk in ["SK1", "SK2", "SK3"] %}
+        <div class="col-md-4">
+          <div class="p-3 rounded" style="background: {{ sk_farbe[sk].hex }}15; border-left: 3px solid {{ sk_farbe[sk].hex }};">
+            <div class="fw-bold mb-2">
+              <span class="badge sk-badge sk{{ sk[-1] }}">{{ sk }}</span>
+            </div>
+            <div class="small">
+              {% for term in ivena_by_sk[sk] %}
+                <code class="me-1 mb-1 d-inline-block">{{ term }}</code>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      <div class="form-text mt-2">
+        Case-insensitiv, Leerzeichen werden ignoriert. Zusätzlich Heuristik: endet auf "1" → SK1, etc.
+        Auch SK IV / Blau / Palliativ wird aktuell auf SK3 gemappt.
+      </div>
+    </div>
+  </div>
+
+  <!-- IVENA-Versorgungsstufen -->
+  <div class="card shadow-sm mb-4">
+    <div class="card-header">
+      <h2 class="h6 mb-0"><i class="bi bi-hospital"></i> IVENA-Versorgungsstufen (Klinik)</h2>
+      <small class="text-body-secondary">Welche SK-Patienten kann eine Klinik aufnehmen?</small>
+    </div>
+    <div class="card-body p-0">
+      <table class="table mb-0 align-middle">
+        <thead class="table-light">
+          <tr><th>Versorgungsstufe</th><th>Kann versorgen</th></tr>
+        </thead>
+        <tbody>
+          {% for stufe, sks in versorgungsstufe.items() %}
+          <tr>
+            <td>{{ stufe }}</td>
+            <td>
+              {% if sks %}
+                {% for sk in sks %}
+                  <span class="badge sk-badge sk{{ sk[-1] }} me-1">{{ sk }}</span>
+                {% endfor %}
+              {% else %}
+                <span class="text-body-secondary">—</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Fachbereich-Zuordnung -->
+  <div class="card shadow-sm mb-4">
+    <div class="card-header">
+      <h2 class="h6 mb-0"><i class="bi bi-list-check"></i> IVENA-Fachbereich → typische SK</h2>
+      <small class="text-body-secondary">Heuristische Zuordnung, welche SK-Patienten typischerweise dort landen.</small>
+    </div>
+    <div class="card-body p-0">
+      <table class="table mb-0 align-middle">
+        <thead class="table-light">
+          <tr><th>Fachbereich</th><th>Typische SK</th></tr>
+        </thead>
+        <tbody>
+          {% for fb, sks in fachbereich.items() %}
+          <tr>
+            <td>{{ fb }}</td>
+            <td>
+              {% for sk in sks %}
+                <span class="badge sk-badge sk{{ sk[-1] }} me-1">{{ sk }}</span>
+              {% endfor %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="alert alert-info small">
+    <i class="bi bi-info-circle"></i>
+    <strong>Live-Test:</strong> Beim Upload einer XLSX werden die Werte in der SK-Spalte
+    automatisch gegen diese Tabelle normalisiert. Unbekannte Werte werden mit leerem SK
+    gespeichert und erscheinen als "keine Zuordnung" im System.
+  </div>
+</div>
+{% endblock %}

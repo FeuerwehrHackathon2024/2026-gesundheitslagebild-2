@@ -132,6 +132,78 @@ def filter_options():
     })
 
 
+@api_bp.get("/belegung")
+def list_belegung():
+    """Belegungs-Übersicht pro Klinik: Grundbelegung + Dispatch + Frei.
+
+    Dispatch-Zuweisungen werden aus Patient-Tabelle aggregiert, damit man sieht,
+    was aus der Simulation kommt und was durch die aktuelle Verteilung dazu kam.
+    """
+    # Dispatch-Zuweisungen pro Klinik+SK
+    assignments = (
+        db.session.query(
+            Patient.assigned_krankenhaus_id,
+            Patient.sk,
+            db.func.count(Patient.id),
+        )
+        .filter(Patient.status == "assigned")
+        .group_by(Patient.assigned_krankenhaus_id, Patient.sk)
+        .all()
+    )
+    dispatch_by_kh: dict[int, dict[str, int]] = {}
+    for kh_id, sk, cnt in assignments:
+        if kh_id is None:
+            continue
+        dispatch_by_kh.setdefault(kh_id, {"SK1": 0, "SK2": 0, "SK3": 0})[sk] = cnt
+
+    out = []
+    rows = (
+        db.session.query(KrankenhausBelegung, Krankenhaus)
+        .join(Krankenhaus, Krankenhaus.id == KrankenhausBelegung.krankenhaus_id)
+        .filter(Krankenhaus.lat.isnot(None))
+        .order_by(Krankenhaus.name.asc())
+    )
+    for bel, kh in rows:
+        dispatch = dispatch_by_kh.get(kh.id, {"SK1": 0, "SK2": 0, "SK3": 0})
+        grundbelegung = {
+            "SK1": max((bel.belegung_sk1 or 0) - dispatch["SK1"], 0),
+            "SK2": max((bel.belegung_sk2 or 0) - dispatch["SK2"], 0),
+            "SK3": max((bel.belegung_sk3 or 0) - dispatch["SK3"], 0),
+        }
+        out.append({
+            "id": kh.id,
+            "name": kh.name,
+            "ort": kh.ort,
+            "plz": kh.plz,
+            "sk_max": kh.sk_max,
+            "ausgeschlossen": kh.ausgeschlossen,
+            "kapazitaet": {
+                "SK1": bel.kapazitaet_sk1 or 0,
+                "SK2": bel.kapazitaet_sk2 or 0,
+                "SK3": bel.kapazitaet_sk3 or 0,
+            },
+            "grundbelegung": grundbelegung,
+            "dispatch": dispatch,
+            "belegung_total": {
+                "SK1": bel.belegung_sk1 or 0,
+                "SK2": bel.belegung_sk2 or 0,
+                "SK3": bel.belegung_sk3 or 0,
+            },
+            "frei": {
+                "SK1": max((bel.kapazitaet_sk1 or 0) - (bel.belegung_sk1 or 0), 0),
+                "SK2": max((bel.kapazitaet_sk2 or 0) - (bel.belegung_sk2 or 0), 0),
+                "SK3": max((bel.kapazitaet_sk3 or 0) - (bel.belegung_sk3 or 0), 0),
+            },
+            "vorbelegung_prozent": bel.vorbelegung_prozent or 0,
+        })
+    # Kliniken mit Dispatch-Einträgen oder Betten > 0 bevorzugt zeigen
+    out.sort(key=lambda x: (
+        -(x["dispatch"]["SK1"] + x["dispatch"]["SK2"] + x["dispatch"]["SK3"]),
+        -(x["kapazitaet"]["SK1"] + x["kapazitaet"]["SK2"] + x["kapazitaet"]["SK3"]),
+    ))
+    return jsonify(out)
+
+
 @api_bp.get("/stats")
 def stats():
     total = Krankenhaus.query.filter(Krankenhaus.lat.isnot(None)).count()

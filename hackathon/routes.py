@@ -28,6 +28,31 @@ def patients_page() -> str:
     return render_template("patients.html")
 
 
+@main_bp.get("/belegung")
+def belegung_page() -> str:
+    return render_template("belegung.html")
+
+
+@main_bp.get("/ivena-matching")
+def ivena_matching_page() -> str:
+    from .ivena_mapping import (
+        IVENA_SK_LOOKUP, SK_FARBE, IVENA_VERSORGUNGSSTUFE_TO_SK,
+        IVENA_FACHBEREICH_TO_SK, SK_TRANSPORTMITTEL,
+    )
+    # Ausgangsbegriffe nach Ziel-SK gruppieren
+    by_sk: dict[str, list[str]] = {"SK1": [], "SK2": [], "SK3": []}
+    for src, dst in IVENA_SK_LOOKUP.items():
+        by_sk.setdefault(dst, []).append(src)
+    return render_template(
+        "ivena_matching.html",
+        sk_farbe=SK_FARBE,
+        sk_transport=SK_TRANSPORTMITTEL,
+        ivena_by_sk=by_sk,
+        versorgungsstufe=IVENA_VERSORGUNGSSTUFE_TO_SK,
+        fachbereich=IVENA_FACHBEREICH_TO_SK,
+    )
+
+
 @main_bp.get("/info")
 def info_page() -> str:
     return render_template("info.html")

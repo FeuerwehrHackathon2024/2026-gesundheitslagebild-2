@@ -14,6 +14,7 @@ from openpyxl import load_workbook
 from sqlalchemy import and_, or_
 
 from .extensions import db
+from .here_client import fetch_route
 from .models import (
     Hub,
     Krankenhaus,
@@ -27,6 +28,12 @@ log = logging.getLogger(__name__)
 
 # SK → Aufenthaltsdauer Tage
 SK_AUFENTHALT_TAGE = {"SK1": 5, "SK2": 3, "SK3": 1}
+
+# SK → empfohlenes Transportmittel
+SK_TRANSPORTMITTEL = {"SK1": "RTW", "SK2": "KTW", "SK3": "Taxi"}
+
+# Pickup-Offset je Transportmittel in Minuten (bis der Patient am Hub abgeholt ist)
+TRANSPORTMITTEL_PICKUP_OFFSET_MIN = {"RTW": 2, "KTW": 5, "Taxi": 10}
 
 # SK-Kompatibilität: ein SK1-fähiges KH kann auch SK2 und SK3 versorgen
 SK_KANN_COLS = {
@@ -52,12 +59,9 @@ def haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
 # ---------------- XLSX Parse ----------------
 
 def _normalize_sk(value) -> str | None:
-    if value is None:
-        return None
-    s = str(value).strip().upper().replace(" ", "")
-    if s in {"SK1", "SK2", "SK3"}:
-        return s
-    return None
+    """Akzeptiert sowohl SK1/SK2/SK3 als auch IVENA-Notation (I, II, Rot, Gelb, …)."""
+    from .ivena_mapping import map_ivena_to_sk
+    return map_ivena_to_sk(value)
 
 
 def _as_datetime(day: date | None, t: time | None) -> datetime | None:
@@ -234,14 +238,15 @@ def _eligible_krankenhaeuser(sk: str):
     )
 
 
-def dispatch_batch(batch: PatientenBatch, hub: Hub) -> DispatchResult:
+def dispatch_batch(batch: PatientenBatch, hub: Hub, use_here: bool = True) -> DispatchResult:
     """Verteilt alle pending-Patienten eines Batches auf Kliniken.
 
     Regeln:
     - Zuweisung in SK-Reihenfolge SK1 → SK2 → SK3 (vital zuerst)
-    - Für jeden Patienten: nächste Klinik zuerst (Haversine-Distanz zum Hub)
+    - Für jeden Patienten: nächste Klinik zuerst (Haversine-Vorranking zum Hub)
     - Nimmt erste Klinik mit freier Kapazität im benötigten SK-Segment
     - Radius erweitert sich automatisch weil wir nach Distanz sortieren
+    - HERE Maps für echte Tourenplanung der ausgewählten Ziel-Klinik
     """
     init_belegung_rows()
 

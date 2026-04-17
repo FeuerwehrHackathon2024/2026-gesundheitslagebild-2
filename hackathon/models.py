@@ -203,6 +203,15 @@ class TransportAuftrag(db.Model):
     distanz_km = db.Column(db.Float, nullable=True)
     dauer_min = db.Column(db.Float, nullable=True)
     route_geojson = db.Column(db.Text, nullable=True)
+    # Transportmittel: RTW (SK1), KTW (SK2), Taxi (SK3) — überschreibbar
+    transportmittel = db.Column(db.String(16), nullable=True)
+    # Zeitpunkte
+    abfahrt = db.Column(db.DateTime, nullable=True)
+    ankunft = db.Column(db.DateTime, nullable=True)
+    # HERE Maps-Daten
+    here_polyline = db.Column(db.Text, nullable=True)
+    here_instructions_json = db.Column(db.Text, nullable=True)
+    routing_source = db.Column(db.String(16), nullable=True)  # "here" | "haversine"
     status = db.Column(db.String(32), default="geplant")  # geplant | unterwegs | abgeschlossen
     erzeugt_am = db.Column(db.DateTime, default=datetime.utcnow)
 
