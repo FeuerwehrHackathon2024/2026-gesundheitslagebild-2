@@ -29,8 +29,49 @@
       </div>
 
       <div class="card shadow-sm mb-3">
-        <div class="card-header"><h2 class="h6 mb-0"><i class="bi bi-bar-chart-fill"></i> Aktuelle Belegung</h2></div>
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <h2 class="h6 mb-0"><i class="bi bi-bar-chart-fill"></i> Aktuelle Belegung</h2>
+          <button class="btn btn-sm btn-outline-secondary" id="btn-edit-cap" title="Kapazität anpassen">
+            <i class="bi bi-pencil"></i>
+          </button>
+        </div>
         <div class="card-body" id="k-belegung">—</div>
+        <div class="card-body border-top py-2 d-none" id="k-cap-edit">
+          <div class="small fw-semibold mb-2">
+            <i class="bi bi-sliders"></i> Kapazität anpassen
+            <span class="text-body-secondary fw-normal">(z.B. Station gesperrt, Katastrophenmodus)</span>
+          </div>
+          <div class="btn-group btn-group-sm mb-2 w-100" role="group">
+            <button type="button" class="btn btn-outline-secondary" data-preset="100">100%</button>
+            <button type="button" class="btn btn-outline-warning" data-preset="75">75%</button>
+            <button type="button" class="btn btn-outline-warning" data-preset="50">50%</button>
+            <button type="button" class="btn btn-outline-danger" data-preset="25">25%</button>
+            <button type="button" class="btn btn-dark" data-preset="0">Alles zu</button>
+          </div>
+          <div class="row g-1 small mb-2">
+            <div class="col-4">
+              <label class="form-label mb-0 small">SK1</label>
+              <input type="number" min="0" class="form-control form-control-sm" id="cap-sk1">
+            </div>
+            <div class="col-4">
+              <label class="form-label mb-0 small">SK2</label>
+              <input type="number" min="0" class="form-control form-control-sm" id="cap-sk2">
+            </div>
+            <div class="col-4">
+              <label class="form-label mb-0 small">SK3</label>
+              <input type="number" min="0" class="form-control form-control-sm" id="cap-sk3">
+            </div>
+          </div>
+          <div class="d-flex gap-1">
+            <button class="btn btn-danger btn-sm flex-grow-1" id="btn-save-cap">
+              <i class="bi bi-check2"></i> Speichern
+            </button>
+            <button class="btn btn-outline-secondary btn-sm" id="btn-cap-default" title="Auf Default zurück">
+              <i class="bi bi-arrow-counterclockwise"></i>
+            </button>
+          </div>
+          <div id="cap-status" class="form-text small mt-1"></div>
+        </div>
       </div>
 
       <div class="card shadow-sm">
@@ -110,9 +151,79 @@ const KH_ID = {{ kh_id }};
       ${flags ? `<div class="mt-2">${flags}</div>` : ""}
     </div>`;
 
+  // --- Kapazitäts-Editor ---
+  const editBox = document.getElementById("k-cap-edit");
+  const defaults = {
+    sk1: k.belegung?.kapazitaet_sk1 || 0,
+    sk2: k.belegung?.kapazitaet_sk2 || 0,
+    sk3: k.belegung?.kapazitaet_sk3 || 0,
+  };
+  // Original-Defaults (vor Override) aus kapazitaet_sk*_geschaetzt
+  const origDefaults = {
+    sk1: null, sk2: null, sk3: null,
+  };
+
+  document.getElementById("btn-edit-cap").addEventListener("click", () => {
+    editBox.classList.toggle("d-none");
+    if (!editBox.classList.contains("d-none")) {
+      document.getElementById("cap-sk1").value = k.belegung?.kapazitaet_sk1 || 0;
+      document.getElementById("cap-sk2").value = k.belegung?.kapazitaet_sk2 || 0;
+      document.getElementById("cap-sk3").value = k.belegung?.kapazitaet_sk3 || 0;
+    }
+  });
+
+  function applyPreset(pct) {
+    const factor = pct / 100;
+    // Basis: Default-geschätzte Kapazität wenn verfügbar, sonst aktuelle
+    const base_sk1 = origDefaults.sk1 ?? defaults.sk1;
+    const base_sk2 = origDefaults.sk2 ?? defaults.sk2;
+    const base_sk3 = origDefaults.sk3 ?? defaults.sk3;
+    document.getElementById("cap-sk1").value = Math.round(base_sk1 * factor);
+    document.getElementById("cap-sk2").value = Math.round(base_sk2 * factor);
+    document.getElementById("cap-sk3").value = Math.round(base_sk3 * factor);
+  }
+  document.querySelectorAll("button[data-preset]").forEach(btn =>
+    btn.addEventListener("click", () => applyPreset(Number(btn.dataset.preset))));
+
+  document.getElementById("btn-save-cap").addEventListener("click", async () => {
+    const body = {
+      kapazitaet_sk1: Number(document.getElementById("cap-sk1").value) || 0,
+      kapazitaet_sk2: Number(document.getElementById("cap-sk2").value) || 0,
+      kapazitaet_sk3: Number(document.getElementById("cap-sk3").value) || 0,
+    };
+    const statusEl = document.getElementById("cap-status");
+    statusEl.innerHTML = `<span class="text-body-secondary"><i class="bi bi-hourglass-split"></i> Speichere…</span>`;
+    try {
+      const r = await fetch(`/api/krankenhaus/${KH_ID}/kapazitaet`, {
+        method: "POST", headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(body),
+      });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error || "Fehler");
+      if (k.belegung) {
+        k.belegung.kapazitaet_sk1 = j.kapazitaet_sk1;
+        k.belegung.kapazitaet_sk2 = j.kapazitaet_sk2;
+        k.belegung.kapazitaet_sk3 = j.kapazitaet_sk3;
+      }
+      origDefaults.sk1 = j.default_sk1;
+      origDefaults.sk2 = j.default_sk2;
+      origDefaults.sk3 = j.default_sk3;
+      statusEl.innerHTML = `<span class="text-success"><i class="bi bi-check-circle"></i> Gespeichert</span>`;
+      renderBelegung(k.belegung);  // Bars neu zeichnen
+      setTimeout(() => statusEl.innerHTML = "", 2500);
+    } catch (err) {
+      statusEl.innerHTML = `<span class="text-danger">${esc(err.message)}</span>`;
+    }
+  });
+
+  document.getElementById("btn-cap-default").addEventListener("click", () => applyPreset(100));
+
   // Belegung mit Bars
-  if (k.belegung) {
-    const b = k.belegung;
+  function renderBelegung(b) {
+    if (!b) {
+      document.getElementById("k-belegung").innerHTML = `<em class="text-body-secondary small">Noch keine Belegungs-Daten.</em>`;
+      return;
+    }
     const row = (sk, bel, cap) => {
       const pct = cap ? Math.round(bel / cap * 100) : 0;
       const color = sk === "SK1" ? "#b71c1c" : sk === "SK2" ? "#f57c00" : "#fbc02d";
@@ -133,9 +244,8 @@ const KH_ID = {{ kh_id }};
       row("SK2", b.belegung_sk2, b.kapazitaet_sk2) +
       row("SK3", b.belegung_sk3, b.kapazitaet_sk3) +
       (b.vorbelegung_prozent ? `<div class="small text-body-secondary mt-2">Simulierte Grundbelegung: ${b.vorbelegung_prozent}%</div>` : "");
-  } else {
-    document.getElementById("k-belegung").innerHTML = `<em class="text-body-secondary small">Noch keine Belegungs-Daten.</em>`;
   }
+  renderBelegung(k.belegung);
 
   // Karte
   if (k.lat != null && k.lon != null) {

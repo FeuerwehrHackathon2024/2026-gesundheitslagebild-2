@@ -47,6 +47,49 @@ _KRANKENHAUS_COMPACT_FIELDS = (
 )
 
 
+@api_bp.post("/krankenhaus/<int:kh_id>/kapazitaet")
+def update_kapazitaet(kh_id: int):
+    """Setzt die Kapazität pro SK-Stufe manuell (z.B. wenn Station gesperrt ist).
+
+    Body: {kapazitaet_sk1?: int, kapazitaet_sk2?: int, kapazitaet_sk3?: int, note?: str}
+    """
+    kh = db.session.get(Krankenhaus, kh_id)
+    if kh is None:
+        abort(404)
+    payload = request.get_json(silent=True) or {}
+    bel = db.session.get(KrankenhausBelegung, kh_id)
+    if bel is None:
+        bel = KrankenhausBelegung(
+            krankenhaus_id=kh_id,
+            kapazitaet_sk1=kh.kapazitaet_sk1_geschaetzt or 0,
+            kapazitaet_sk2=kh.kapazitaet_sk2_geschaetzt or 0,
+            kapazitaet_sk3=kh.kapazitaet_sk3_geschaetzt or 0,
+        )
+        db.session.add(bel)
+    for sk in ("sk1", "sk2", "sk3"):
+        key = f"kapazitaet_{sk}"
+        if key in payload:
+            try:
+                val = max(0, int(payload[key]))
+                setattr(bel, key, val)
+                # Belegung darf nie > Kapazität werden
+                bel_col = f"belegung_{sk}"
+                if getattr(bel, bel_col, 0) > val:
+                    setattr(bel, bel_col, val)
+            except (TypeError, ValueError):
+                return jsonify({"error": f"{key} muss Integer sein"}), 400
+    db.session.commit()
+    return jsonify({
+        "id": kh.id, "name": kh.name,
+        "kapazitaet_sk1": bel.kapazitaet_sk1,
+        "kapazitaet_sk2": bel.kapazitaet_sk2,
+        "kapazitaet_sk3": bel.kapazitaet_sk3,
+        "default_sk1": kh.kapazitaet_sk1_geschaetzt,
+        "default_sk2": kh.kapazitaet_sk2_geschaetzt,
+        "default_sk3": kh.kapazitaet_sk3_geschaetzt,
+    })
+
+
 @api_bp.post("/krankenhaus/<int:kh_id>/toggle-exclude")
 def toggle_exclude(kh_id: int):
     kh = db.session.get(Krankenhaus, kh_id)
