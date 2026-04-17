@@ -15,7 +15,9 @@ from .dispatch import (
     reset_belegung,
 )
 from .extensions import db
+from .hl7_ingest import apply_event, parse_hl7_adt
 from .models import (
+    AdtEvent,
     Fahrt,
     Hub,
     Krankenhaus,
@@ -204,6 +206,388 @@ def list_belegung():
         -(x["kapazitaet"]["SK1"] + x["kapazitaet"]["SK2"] + x["kapazitaet"]["SK3"]),
     ))
     return jsonify(out)
+
+
+@api_bp.get("/krankenhaeuser/occupancy")
+def krankenhaeuser_occupancy():
+    """Liefert pro Klinik den aktuellen Belegungszustand (nur die mit Geo).
+
+    Für die Dashboard-Map um Marker nach Auslastung einzufärben.
+    Return: [{id, fill_pct, status}] — status ∈ 'frei' | 'mittel' | 'voll' | 'uebervoll' | 'unbekannt'
+    """
+    rows = (
+        db.session.query(Krankenhaus, KrankenhausBelegung)
+        .outerjoin(KrankenhausBelegung, KrankenhausBelegung.krankenhaus_id == Krankenhaus.id)
+        .filter(Krankenhaus.lat.isnot(None))
+        .all()
+    )
+    out = []
+    for kh, bel in rows:
+        if bel is None or (not bel.kapazitaet_sk1 and not bel.kapazitaet_sk2 and not bel.kapazitaet_sk3):
+            out.append({"id": kh.id, "fill_pct": None, "status": "unbekannt"})
+            continue
+        cap = (bel.kapazitaet_sk1 or 0) + (bel.kapazitaet_sk2 or 0) + (bel.kapazitaet_sk3 or 0)
+        used = (bel.belegung_sk1 or 0) + (bel.belegung_sk2 or 0) + (bel.belegung_sk3 or 0)
+        if cap == 0:
+            out.append({"id": kh.id, "fill_pct": None, "status": "unbekannt"})
+            continue
+        pct = round(used / cap * 100)
+        if pct >= 100:
+            status = "uebervoll"
+        elif pct >= 85:
+            status = "voll"
+        elif pct >= 60:
+            status = "mittel"
+        else:
+            status = "frei"
+        out.append({"id": kh.id, "fill_pct": pct, "status": status,
+                    "used": used, "cap": cap})
+    return jsonify(out)
+
+
+# ===================== Fahrt-Status Workflow =====================
+
+@api_bp.post("/fahrten/<int:fahrt_id>/status")
+def update_fahrt_status(fahrt_id: int):
+    """Setzt den Status einer Fahrt (und aller zugehörigen Transportaufträge)."""
+    payload = request.get_json(silent=True) or {}
+    new_status = str(payload.get("status", "")).strip().lower()
+    if new_status not in ("geplant", "unterwegs", "abgeschlossen"):
+        return jsonify({"error": "status muss geplant|unterwegs|abgeschlossen sein"}), 400
+    f = db.session.get(Fahrt, fahrt_id)
+    if f is None:
+        abort(404)
+    f.status = new_status
+    # zugehörige Transportaufträge spiegeln
+    db.session.query(TransportAuftrag).filter(
+        TransportAuftrag.fahrt_id == f.id
+    ).update({"status": new_status})
+    db.session.commit()
+    return jsonify({"id": f.id, "status": f.status})
+
+
+# ===================== PDF-Export Transportauftrag =====================
+
+@api_bp.get("/transports/<int:transport_id>/pdf")
+def transport_pdf(transport_id: int):
+    from datetime import datetime as _dt
+    from io import BytesIO
+    from flask import Response as _Response
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib import colors
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.units import cm
+    from reportlab.platypus import (
+        SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle,
+    )
+
+    t = db.session.get(TransportAuftrag, transport_id)
+    if t is None:
+        abort(404)
+    kh = t.krankenhaus
+    p = t.patient
+    f = t.fahrt
+
+    def fmt_dt(d):
+        return d.strftime("%d.%m.%Y %H:%M") if d else "—"
+
+    sk_color = {"SK1": colors.HexColor("#b71c1c"),
+                "SK2": colors.HexColor("#f57c00"),
+                "SK3": colors.HexColor("#fbc02d")}.get(t.sk, colors.black)
+    sk_textcolor = colors.white if t.sk in ("SK1", "SK2") else colors.black
+
+    buf = BytesIO()
+    doc = SimpleDocTemplate(
+        buf, pagesize=A4,
+        leftMargin=1.8 * cm, rightMargin=1.8 * cm,
+        topMargin=1.5 * cm, bottomMargin=1.5 * cm,
+    )
+    styles = getSampleStyleSheet()
+    story = []
+
+    title_style = ParagraphStyle(
+        "Title", parent=styles["Heading1"], fontSize=18, textColor=colors.HexColor("#c62828"),
+    )
+    story.append(Paragraph(f"Transportauftrag #{t.id}", title_style))
+    story.append(Paragraph(
+        f"MANV-Dispatch · Hub Süd (Ulm) · erzeugt {fmt_dt(t.erzeugt_am)}",
+        styles["Normal"],
+    ))
+    story.append(Spacer(1, 0.4 * cm))
+
+    # Kopfzeile: SK-Badge + Transportmittel
+    header_data = [[
+        Paragraph(f"<b>{t.sk or '–'}</b>", ParagraphStyle(
+            "sk", parent=styles["Normal"], textColor=sk_textcolor,
+            backColor=sk_color, alignment=1, fontSize=16,
+        )),
+        Paragraph(f"<b>{t.transportmittel or '—'}</b>", ParagraphStyle(
+            "tm", parent=styles["Normal"], fontSize=16, alignment=1,
+        )),
+        Paragraph(f"<b>Status:</b> {t.status or 'geplant'}<br/>"
+                  f"<b>Fahrt-Code:</b> {f.fahrt_code if f else '—'}",
+                  styles["Normal"]),
+    ]]
+    header_tbl = Table(header_data, colWidths=[2.5 * cm, 3 * cm, 10.5 * cm])
+    header_tbl.setStyle(TableStyle([
+        ("BOX", (0, 0), (-1, -1), 0.5, colors.lightgrey),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 8),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+        ("TOPPADDING", (0, 0), (-1, -1), 8),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+    ]))
+    story.append(header_tbl)
+    story.append(Spacer(1, 0.5 * cm))
+
+    # Zeitplan
+    zeit_data = [
+        ["Abfahrt am Hub", fmt_dt(t.abfahrt)],
+        ["Ankunft in Klinik", fmt_dt(t.ankunft)],
+        ["Strecke",
+         f"{round(t.distanz_km, 1) if t.distanz_km else '—'} km · "
+         f"{round(t.dauer_min) if t.dauer_min else '—'} min"
+         f"  ({t.routing_source or '—'})"],
+    ]
+    zeit_tbl = Table(zeit_data, colWidths=[5 * cm, 11 * cm])
+    zeit_tbl.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (0, -1), colors.whitesmoke),
+        ("BOX", (0, 0), (-1, -1), 0.5, colors.lightgrey),
+        ("INNERGRID", (0, 0), (-1, -1), 0.3, colors.lightgrey),
+        ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 8),
+        ("TOPPADDING", (0, 0), (-1, -1), 6),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+    ]))
+    story.append(zeit_tbl)
+    story.append(Spacer(1, 0.4 * cm))
+
+    # Start + Ziel nebeneinander
+    start_text = "<b>Start (Hub)</b><br/>"
+    if t.hub:
+        start_text += f"{t.hub.name}<br/>{t.hub.ort or ''}<br/>"
+    if t.hub_lat is not None:
+        start_text += f"GPS: {t.hub_lat:.4f}, {t.hub_lon:.4f}"
+
+    ziel_text = "<b>Ziel (Klinik)</b><br/>"
+    if kh:
+        ziel_text += f"{kh.name}<br/>"
+        addr = " ".join(filter(None, [kh.strasse, kh.hausnummer]))
+        place = " ".join(filter(None, [kh.plz, kh.ort]))
+        if addr:
+            ziel_text += f"{addr}<br/>"
+        if place:
+            ziel_text += f"{place}<br/>"
+        if kh.telefon:
+            ziel_text += f"Tel: {kh.telefon}<br/>"
+    if t.ziel_lat is not None:
+        ziel_text += f"GPS: {t.ziel_lat:.4f}, {t.ziel_lon:.4f}"
+
+    route_tbl = Table(
+        [[Paragraph(start_text, styles["Normal"]),
+          Paragraph(ziel_text, styles["Normal"])]],
+        colWidths=[8 * cm, 8 * cm],
+    )
+    route_tbl.setStyle(TableStyle([
+        ("BOX", (0, 0), (-1, -1), 0.5, colors.lightgrey),
+        ("INNERGRID", (0, 0), (-1, -1), 0.3, colors.lightgrey),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 8),
+        ("TOPPADDING", (0, 0), (-1, -1), 8),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+    ]))
+    story.append(route_tbl)
+    story.append(Spacer(1, 0.4 * cm))
+
+    # Patient
+    story.append(Paragraph("<b>Patient</b>", styles["Heading3"]))
+    pat_rows = []
+    if p:
+        pat_rows.extend([
+            ["Patient-ID", p.external_id or f"#{p.id}"],
+            ["Sichtungskategorie", f"{t.sk or '—'}"],
+            ["Herkunft", p.quelle or "—"],
+            ["Eingangssichtung", fmt_dt(p.eingangssichtung)],
+            ["Transportbereit", fmt_dt(p.transportbereit)],
+            ["Aufenthaltsdauer", f"{p.aufenthaltsdauer_tage or '–'} Tage"],
+        ])
+    if f and f.anzahl_patienten > 1:
+        mitfahrer = [other.patient.external_id or f"#{other.patient_id}"
+                     for other in f.transporte if other.id != t.id]
+        if mitfahrer:
+            pat_rows.append(["Weitere Patienten in Fahrt", ", ".join(mitfahrer)])
+    if pat_rows:
+        pat_tbl = Table(pat_rows, colWidths=[5 * cm, 11 * cm])
+        pat_tbl.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (0, -1), colors.whitesmoke),
+            ("BOX", (0, 0), (-1, -1), 0.5, colors.lightgrey),
+            ("INNERGRID", (0, 0), (-1, -1), 0.3, colors.lightgrey),
+            ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 8),
+            ("TOPPADDING", (0, 0), (-1, -1), 5),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+        ]))
+        story.append(pat_tbl)
+
+    story.append(Spacer(1, 0.6 * cm))
+    story.append(Paragraph(
+        f"<i>Dokument erzeugt am {_dt.now().strftime('%d.%m.%Y %H:%M')} · "
+        f"MANV-Dispatch Prototyp · Hackathon 2026</i>",
+        ParagraphStyle("foot", parent=styles["Normal"], textColor=colors.grey, fontSize=8),
+    ))
+
+    doc.build(story)
+    pdf_bytes = buf.getvalue()
+
+    filename = f"transportauftrag_{t.id}_{t.sk or 'unknown'}.pdf"
+    return _Response(
+        pdf_bytes, mimetype="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+# ===================== HL7 ADT Live-Feed =====================
+
+@api_bp.post("/adt/ingest")
+def adt_ingest():
+    """Nimmt eine HL7 v2 ADT-Nachricht entgegen und verarbeitet sie.
+
+    Akzeptierte Content-Types:
+      - application/hl7-v2 (Rohtext)
+      - text/plain
+      - application/json {"message": "..."}
+    """
+    ct = request.content_type or ""
+    raw = ""
+    if "json" in ct.lower():
+        payload = request.get_json(silent=True) or {}
+        raw = payload.get("message", "")
+    else:
+        raw = request.get_data(as_text=True)
+
+    if not raw or not raw.strip():
+        return jsonify({"error": "Leere HL7-Nachricht"}), 400
+
+    parsed = parse_hl7_adt(raw)
+    if not parsed.get("event"):
+        return jsonify({"error": "Kein ADT-Event in MSH/EVN gefunden"}), 400
+
+    event = apply_event(parsed)
+    return jsonify({
+        "event_id": event.id,
+        "event_type": event.event_type,
+        "sk": event.sk,
+        "krankenhaus_id": event.krankenhaus_id,
+        "krankenhaus": event.krankenhaus.name if event.krankenhaus else None,
+        "processed_ok": event.processed_ok,
+        "note": event.process_note,
+    }), 200 if event.processed_ok else 202
+
+
+@api_bp.get("/adt/events")
+def adt_events():
+    """Letzte Events (für Live-Feed im UI)."""
+    limit = min(request.args.get("limit", 50, type=int), 500)
+    since_id = request.args.get("since_id", type=int)
+    q = AdtEvent.query.order_by(AdtEvent.id.desc())
+    if since_id:
+        q = q.filter(AdtEvent.id > since_id).order_by(AdtEvent.id.asc())
+    events = q.limit(limit).all()
+    if since_id:
+        events = list(reversed(events))  # newest-first for client
+    events.sort(key=lambda e: e.id, reverse=True)
+    return jsonify([{
+        "id": e.id,
+        "event_type": e.event_type,
+        "sk": e.sk,
+        "patient_hl7_id": e.patient_hl7_id,
+        "krankenhaus_id": e.krankenhaus_id,
+        "krankenhaus_name": e.krankenhaus.name if e.krankenhaus else None,
+        "sending_facility": e.sending_facility_raw,
+        "station": e.station,
+        "created_at": e.created_at.isoformat() if e.created_at else None,
+        "processed_ok": e.processed_ok,
+        "note": e.process_note,
+    } for e in events])
+
+
+@api_bp.get("/adt/stats")
+def adt_stats():
+    from sqlalchemy import func
+    total = db.session.query(func.count(AdtEvent.id)).scalar()
+    by_type = dict(
+        db.session.query(AdtEvent.event_type, func.count(AdtEvent.id))
+        .group_by(AdtEvent.event_type).all()
+    )
+    return jsonify({
+        "total": total,
+        "by_type": {k: v for k, v in by_type.items() if k},
+        "unresolved": db.session.query(func.count(AdtEvent.id))
+                        .filter(AdtEvent.processed_ok == False).scalar() or 0,  # noqa: E712
+    })
+
+
+# ===================== Time-Capsule =====================
+
+@api_bp.post("/timecapsule/run")
+def timecapsule_run():
+    """Startet eine mehrtägige Time-Capsule-Simulation (synchron).
+
+    Body: {days?: int, patients_per_day?: int, grundbelegung_prozent?: int,
+           seed?: int, sk_distribution?: [sk1, sk2, sk3]}
+    """
+    from datetime import datetime as _dt
+    from .timecapsule import CapsuleParams, run_capsule
+
+    payload = request.get_json(silent=True) or {}
+    start_str = payload.get("start")
+    start_dt = None
+    if start_str:
+        try:
+            start_dt = _dt.fromisoformat(start_str)
+        except ValueError:
+            return jsonify({"error": "start ungültig"}), 400
+
+    dist = payload.get("sk_distribution")
+    sk_dist = tuple(dist) if isinstance(dist, list) and len(dist) == 3 else (0.12, 0.28, 0.60)
+
+    params = CapsuleParams(
+        days=max(1, min(int(payload.get("days", 5)), 14)),
+        patients_per_day=max(1, min(int(payload.get("patients_per_day", 250)), 2000)),
+        sk_distribution=sk_dist,
+        start_date=start_dt,
+        grundbelegung_prozent=max(0, min(int(payload.get("grundbelegung_prozent", 60)), 100)),
+        seed=payload.get("seed"),
+    )
+    result = run_capsule(params)
+    return jsonify(result)
+
+
+@api_bp.post("/adt/simulate")
+def adt_simulate():
+    """Triggert eine interne Live-Simulation: erzeugt N ADT-Events server-seitig."""
+    import sys
+    sys.path.insert(0, "scripts")
+    try:
+        from hl7_adt_generator import build_message, stream_messages  # noqa: F401
+    except ImportError:
+        return jsonify({"error": "Generator-Script nicht verfügbar"}), 500
+
+    payload = request.get_json(silent=True) or {}
+    event_type = payload.get("event")   # A01|A03|A08|None(=mix)
+    count = max(1, min(int(payload.get("count", 10)), 500))
+
+    applied = []
+    for i in range(1, count + 1):
+        msg = build_message(event_type or
+                            __import__("random").choices(["A01", "A08", "A03"],
+                                                         weights=[5, 3, 2])[0], i)
+        parsed = parse_hl7_adt(msg)
+        ev = apply_event(parsed)
+        applied.append({"id": ev.id, "event": ev.event_type, "sk": ev.sk,
+                        "krankenhaus": ev.krankenhaus.name if ev.krankenhaus else None})
+
+    return jsonify({"generated": count, "events": applied[-20:]})
 
 
 @api_bp.get("/stats")

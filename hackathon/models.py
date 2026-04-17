@@ -254,6 +254,31 @@ class TransportAuftrag(db.Model):
     fahrt = db.relationship("Fahrt", backref=db.backref("transporte", lazy="dynamic"))
 
 
+class AdtEvent(db.Model):
+    """Live-Feed aus den Krankenhaus-Systemen (HL7 v2 ADT-Nachrichten)."""
+    __tablename__ = "adt_event"
+    __table_args__ = (
+        db.Index("ix_adt_created", "created_at"),
+        db.Index("ix_adt_kh", "krankenhaus_id"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    event_type = db.Column(db.String(8), nullable=False)  # A01 | A03 | A08
+    patient_hl7_id = db.Column(db.String(64), nullable=True)
+    sk = db.Column(db.String(8), nullable=True)
+    krankenhaus_id = db.Column(db.Integer, db.ForeignKey("krankenhaus.id"), nullable=True)
+    sending_facility_raw = db.Column(db.Text, nullable=True)
+    station = db.Column(db.String(32), nullable=True)
+    admit_ts = db.Column(db.DateTime, nullable=True)
+    discharge_ts = db.Column(db.DateTime, nullable=True)
+    raw_message = db.Column(db.Text, nullable=True)
+    processed_ok = db.Column(db.Boolean, default=True)
+    process_note = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    krankenhaus = db.relationship("Krankenhaus")
+
+
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)

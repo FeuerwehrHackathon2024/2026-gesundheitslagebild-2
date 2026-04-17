@@ -61,6 +61,17 @@
             </a>
           </li>
           <li class="nav-item">
+            <a class="nav-link {% if request.endpoint=='main.adt_page' %}active{% endif %}" href="/adt">
+              <i class="bi bi-activity me-1"></i> ADT
+              <span class="badge bg-success pulse-dot ms-1" style="font-size:0.55em">LIVE</span>
+            </a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link {% if request.endpoint=='main.timecapsule_page' %}active{% endif %}" href="/timecapsule">
+              <i class="bi bi-hourglass-split me-1"></i> Time-Capsule
+            </a>
+          </li>
+          <li class="nav-item">
             <a class="nav-link {% if request.endpoint=='main.batches_page' %}active{% endif %}" href="/batches">
               <i class="bi bi-folder2-open me-1"></i> Verläufe
             </a>

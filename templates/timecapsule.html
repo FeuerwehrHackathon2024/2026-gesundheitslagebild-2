@@ -1,0 +1,273 @@
+{% extends "base.html" %}
+
+{% block title %}Time-Capsule · MANV-Dispatch{% endblock %}
+
+{% block head_extra %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+<style>
+.tc-hero {
+  background: linear-gradient(135deg, #c62828 0%, #8c1818 100%);
+  color: #fff;
+  border-radius: 16px;
+  padding: 1.8rem 2rem;
+  margin-bottom: 1.5rem;
+  box-shadow: 0 10px 30px rgba(198,40,40,0.25);
+}
+.tc-hero h1 { font-weight: 700; margin-bottom: 0.25rem; }
+.tc-hero .subtitle { opacity: 0.9; }
+.tc-stat { text-align: center; }
+.tc-stat .big { font-size: 2.2rem; font-weight: 800; line-height: 1; }
+.tc-stat .label { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; opacity: 0.85; }
+.tc-card { background: #fff; border-radius: 14px; padding: 1rem 1.25rem; box-shadow: 0 2px 10px rgba(0,0,0,0.06); }
+.tc-scrubber { accent-color: #c62828; }
+.tc-tick {
+  width: 10px; height: 10px; border-radius: 50%; display: inline-block;
+  margin-right: 4px; vertical-align: middle;
+}
+.tc-sk1 { background: #b71c1c; } .tc-sk2 { background: #f57c00; } .tc-sk3 { background: #fbc02d; }
+#tc-playpause { min-width: 44px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+
+  <div class="tc-hero d-flex flex-wrap align-items-center gap-4">
+    <div class="flex-grow-1">
+      <h1 class="h2">
+        <i class="bi bi-hourglass-split"></i> Time-Capsule
+      </h1>
+      <div class="subtitle">
+        Mehrtägige MANV-Simulation mit Live-Belegungsbild aus den Krankenhäusern
+        (HL7 ADT A01/A03). Visualisiert die Entwicklung der Versorgungskapazität über die Zeit.
+      </div>
+    </div>
+    <div class="d-flex gap-3 flex-wrap">
+      <div class="tc-stat"><div class="big" id="tc-kpi-days">–</div><div class="label">Tage</div></div>
+      <div class="tc-stat"><div class="big" id="tc-kpi-pats">–</div><div class="label">Patienten</div></div>
+      <div class="tc-stat"><div class="big" id="tc-kpi-a01">–</div><div class="label">Aufnahmen</div></div>
+      <div class="tc-stat"><div class="big" id="tc-kpi-a03">–</div><div class="label">Entlassungen</div></div>
+    </div>
+  </div>
+
+  <div class="row g-3">
+    <div class="col-lg-4">
+      <div class="tc-card mb-3">
+        <h2 class="h6 mb-3"><i class="bi bi-sliders"></i> Simulation konfigurieren</h2>
+        <label class="form-label small fw-semibold">Dauer (Tage)</label>
+        <input type="number" class="form-control form-control-sm mb-2" id="tc-days" value="5" min="1" max="14">
+
+        <label class="form-label small fw-semibold">Patienten pro Tag</label>
+        <input type="number" class="form-control form-control-sm mb-2" id="tc-ppd" value="250" min="50" max="2000">
+
+        <label class="form-label small fw-semibold">Grundbelegung Kliniken</label>
+        <div class="d-flex align-items-center gap-2 mb-2">
+          <input type="range" class="form-range tc-scrubber flex-grow-1" id="tc-grund" min="0" max="100" step="5" value="60">
+          <span class="badge bg-body-secondary text-body-emphasis"><span id="tc-grund-val">60</span>%</span>
+        </div>
+
+        <label class="form-label small fw-semibold">SK-Verteilung (Summe=1)</label>
+        <div class="row g-1 mb-2">
+          <div class="col-4"><input type="number" step="0.05" class="form-control form-control-sm" id="tc-dist-1" value="0.12" title="SK1"></div>
+          <div class="col-4"><input type="number" step="0.05" class="form-control form-control-sm" id="tc-dist-2" value="0.28" title="SK2"></div>
+          <div class="col-4"><input type="number" step="0.05" class="form-control form-control-sm" id="tc-dist-3" value="0.60" title="SK3"></div>
+        </div>
+
+        <button class="btn btn-danger w-100 mt-2" id="tc-run">
+          <i class="bi bi-play-fill"></i> Simulation starten
+        </button>
+        <div id="tc-status" class="form-text small text-center mt-2">—</div>
+      </div>
+
+      <div class="tc-card">
+        <h2 class="h6 mb-3"><i class="bi bi-play-btn"></i> Timeline-Scrubber</h2>
+        <div class="d-flex align-items-center gap-2 mb-2">
+          <button class="btn btn-sm btn-dark" id="tc-playpause">
+            <i class="bi bi-play-fill"></i>
+          </button>
+          <input type="range" class="form-range tc-scrubber flex-grow-1" id="tc-scrub" min="0" max="0" value="0" step="1">
+        </div>
+        <div class="small text-body-secondary text-center" id="tc-time">—</div>
+      </div>
+    </div>
+
+    <div class="col-lg-8">
+      <div class="tc-card mb-3">
+        <h2 class="h6 mb-3"><i class="bi bi-graph-up-arrow"></i> Bettenbelegung über Zeit</h2>
+        <canvas id="tc-chart" height="130"></canvas>
+        <div class="small text-body-secondary mt-2">
+          <span class="tc-tick tc-sk1"></span>SK1 (5 Tage Aufenthalt) ·
+          <span class="tc-tick tc-sk2"></span>SK2 (3 Tage) ·
+          <span class="tc-tick tc-sk3"></span>SK3 (1 Tag)
+        </div>
+      </div>
+
+      <div class="row g-3">
+        <div class="col-md-4"><div class="tc-card h-100">
+          <div class="small text-body-secondary">Freie SK1-Betten</div>
+          <div id="tc-bar-sk1"></div>
+          <div class="small mt-1" id="tc-txt-sk1">—</div>
+        </div></div>
+        <div class="col-md-4"><div class="tc-card h-100">
+          <div class="small text-body-secondary">Freie SK2-Betten</div>
+          <div id="tc-bar-sk2"></div>
+          <div class="small mt-1" id="tc-txt-sk2">—</div>
+        </div></div>
+        <div class="col-md-4"><div class="tc-card h-100">
+          <div class="small text-body-secondary">Freie SK3-Betten</div>
+          <div id="tc-bar-sk3"></div>
+          <div class="small mt-1" id="tc-txt-sk3">—</div>
+        </div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  const stateTC = { snapshots: [], idx: 0, playing: false, timer: null };
+  let chart = null;
+
+  const grundSlider = document.getElementById("tc-grund");
+  grundSlider.addEventListener("input", e => document.getElementById("tc-grund-val").textContent = e.target.value);
+
+  function fmtDt(iso) { return new Date(iso).toLocaleString("de-DE", { dateStyle: "short", timeStyle: "short" }); }
+
+  function drawBar(elId, bel, cap, color) {
+    const pct = cap ? Math.round((cap - bel) / cap * 100) : 0;
+    const usedPct = cap ? Math.round(bel / cap * 100) : 0;
+    document.getElementById(elId).innerHTML = `
+      <div class="progress" style="height: 22px; background: #f0f0f0;">
+        <div class="progress-bar" style="width:${usedPct}%; background: ${color}; opacity: 0.9;">${usedPct}% belegt</div>
+      </div>`;
+    return pct;
+  }
+
+  function renderFrame(snap) {
+    if (!snap) return;
+    document.getElementById("tc-time").textContent = fmtDt(snap.t);
+    drawBar("tc-bar-sk1", snap.bel.SK1, snap.cap.SK1, "#b71c1c");
+    drawBar("tc-bar-sk2", snap.bel.SK2, snap.cap.SK2, "#f57c00");
+    drawBar("tc-bar-sk3", snap.bel.SK3, snap.cap.SK3, "#fbc02d");
+    document.getElementById("tc-txt-sk1").textContent = `${snap.frei.SK1.toLocaleString("de-DE")} frei · ${snap.bel.SK1.toLocaleString("de-DE")} von ${snap.cap.SK1.toLocaleString("de-DE")} belegt`;
+    document.getElementById("tc-txt-sk2").textContent = `${snap.frei.SK2.toLocaleString("de-DE")} frei · ${snap.bel.SK2.toLocaleString("de-DE")} von ${snap.cap.SK2.toLocaleString("de-DE")} belegt`;
+    document.getElementById("tc-txt-sk3").textContent = `${snap.frei.SK3.toLocaleString("de-DE")} frei · ${snap.bel.SK3.toLocaleString("de-DE")} von ${snap.cap.SK3.toLocaleString("de-DE")} belegt`;
+
+    if (chart) {
+      chart.options.plugins.annotation = {
+        annotations: {
+          now: {
+            type: "line",
+            xMin: new Date(snap.t).valueOf(),
+            xMax: new Date(snap.t).valueOf(),
+            borderColor: "#212529",
+            borderWidth: 2,
+          }
+        }
+      };
+      chart.update("none");
+    }
+  }
+
+  function buildChart() {
+    const ctx = document.getElementById("tc-chart").getContext("2d");
+    if (chart) chart.destroy();
+    const data = stateTC.snapshots.map(s => ({
+      x: new Date(s.t).valueOf(),
+      sk1: s.bel.SK1, sk2: s.bel.SK2, sk3: s.bel.SK3,
+    }));
+    chart = new Chart(ctx, {
+      type: "line",
+      data: {
+        datasets: [
+          { label: "SK1 belegt", borderColor: "#b71c1c", backgroundColor: "rgba(183,28,28,0.15)", fill: true, data: data.map(d => ({x: d.x, y: d.sk1})), borderWidth: 2, tension: 0.25 },
+          { label: "SK2 belegt", borderColor: "#f57c00", backgroundColor: "rgba(245,124,0,0.12)", fill: true, data: data.map(d => ({x: d.x, y: d.sk2})), borderWidth: 2, tension: 0.25 },
+          { label: "SK3 belegt", borderColor: "#fbc02d", backgroundColor: "rgba(251,192,45,0.10)", fill: true, data: data.map(d => ({x: d.x, y: d.sk3})), borderWidth: 2, tension: 0.25 },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: "nearest", intersect: false },
+        scales: {
+          x: { type: "time", time: { tooltipFormat: "dd.MM. HH:mm" } },
+          y: { beginAtZero: true, title: { display: true, text: "Belegte Betten" } },
+        },
+        plugins: {
+          legend: { position: "top" },
+          tooltip: { callbacks: { title: (items) => new Date(items[0].parsed.x).toLocaleString("de-DE") } },
+        },
+      },
+    });
+  }
+
+  function setFrame(i) {
+    stateTC.idx = Math.max(0, Math.min(i, stateTC.snapshots.length - 1));
+    document.getElementById("tc-scrub").value = stateTC.idx;
+    renderFrame(stateTC.snapshots[stateTC.idx]);
+  }
+
+  function togglePlay() {
+    stateTC.playing = !stateTC.playing;
+    const btn = document.getElementById("tc-playpause");
+    btn.innerHTML = stateTC.playing ? '<i class="bi bi-pause-fill"></i>' : '<i class="bi bi-play-fill"></i>';
+    if (stateTC.playing) {
+      stateTC.timer = setInterval(() => {
+        if (stateTC.idx >= stateTC.snapshots.length - 1) { togglePlay(); return; }
+        setFrame(stateTC.idx + 1);
+      }, 160);
+    } else if (stateTC.timer) {
+      clearInterval(stateTC.timer); stateTC.timer = null;
+    }
+  }
+
+  document.getElementById("tc-playpause").addEventListener("click", togglePlay);
+  document.getElementById("tc-scrub").addEventListener("input", e => setFrame(Number(e.target.value)));
+
+  async function runSimulation() {
+    const btn = document.getElementById("tc-run");
+    const status = document.getElementById("tc-status");
+    const body = {
+      days: Number(document.getElementById("tc-days").value) || 5,
+      patients_per_day: Number(document.getElementById("tc-ppd").value) || 250,
+      grundbelegung_prozent: Number(document.getElementById("tc-grund").value) || 60,
+      sk_distribution: [
+        Number(document.getElementById("tc-dist-1").value) || 0.12,
+        Number(document.getElementById("tc-dist-2").value) || 0.28,
+        Number(document.getElementById("tc-dist-3").value) || 0.60,
+      ],
+    };
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Simuliert…';
+    status.innerHTML = `<span class="text-body-secondary">Berechne ${body.days} Tage × ${body.patients_per_day} Patienten ... (20-60 s)</span>`;
+    try {
+      const resp = await fetch("/api/timecapsule/run", {
+        method: "POST", headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(body),
+      });
+      const j = await resp.json();
+      if (!resp.ok || j.error) throw new Error(j.error || "Fehler");
+
+      document.getElementById("tc-kpi-days").textContent = j.days;
+      document.getElementById("tc-kpi-pats").textContent = j.total_patients.toLocaleString("de-DE");
+      document.getElementById("tc-kpi-a01").textContent = j.events_a01.toLocaleString("de-DE");
+      document.getElementById("tc-kpi-a03").textContent = j.events_a03.toLocaleString("de-DE");
+
+      stateTC.snapshots = j.snapshots || [];
+      document.getElementById("tc-scrub").max = Math.max(0, stateTC.snapshots.length - 1);
+      setFrame(0);
+      buildChart();
+      status.innerHTML = `<span class="text-success"><i class="bi bi-check-circle"></i> ${stateTC.snapshots.length} Snapshots · ${j.total_patients} Patienten · ${j.unassigned} offen</span>`;
+    } catch (err) {
+      status.innerHTML = `<span class="text-danger">${err.message}</span>`;
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="bi bi-play-fill"></i> Simulation starten';
+    }
+  }
+
+  document.getElementById("tc-run").addEventListener("click", runSimulation);
+})();
+</script>
+{% endblock %}

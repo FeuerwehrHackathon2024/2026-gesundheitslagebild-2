@@ -1,0 +1,227 @@
+{% extends "base.html" %}
+
+{% block title %}ADT Live-Feed · MANV-Dispatch{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+  <div class="d-flex justify-content-between align-items-start mb-3">
+    <div>
+      <h1 class="h3 mb-1">
+        <i class="bi bi-activity text-danger"></i> ADT Live-Feed
+        <span class="badge bg-success pulse-dot" id="feed-live">LIVE</span>
+      </h1>
+      <p class="text-body-secondary mb-0">
+        HL7 v2 ADT-Events aus den Krankenhaus-Systemen — Aufnahme (A01),
+        Update (A08), Entlassung (A03). Das Belegungs-Bild wird in Echtzeit aktualisiert.
+      </p>
+    </div>
+    <a href="/" class="btn btn-outline-danger"><i class="bi bi-arrow-left"></i> Dashboard</a>
+  </div>
+
+  <!-- KPIs -->
+  <div class="row g-3 mb-3">
+    <div class="col-6 col-lg-3"><div class="kpi-card">
+      <div class="kpi-icon bg-primary-subtle text-primary-emphasis"><i class="bi bi-broadcast"></i></div>
+      <div><div class="kpi-label">Events gesamt</div><div class="kpi-value" id="kpi-total">—</div></div>
+    </div></div>
+    <div class="col-6 col-lg-3"><div class="kpi-card">
+      <div class="kpi-icon bg-success-subtle text-success-emphasis"><i class="bi bi-door-open-fill"></i></div>
+      <div><div class="kpi-label">Aufnahmen (A01)</div><div class="kpi-value" id="kpi-a01">—</div></div>
+    </div></div>
+    <div class="col-6 col-lg-3"><div class="kpi-card">
+      <div class="kpi-icon bg-warning-subtle text-warning-emphasis"><i class="bi bi-arrow-repeat"></i></div>
+      <div><div class="kpi-label">Updates (A08)</div><div class="kpi-value" id="kpi-a08">—</div></div>
+    </div></div>
+    <div class="col-6 col-lg-3"><div class="kpi-card">
+      <div class="kpi-icon bg-secondary-subtle text-secondary-emphasis"><i class="bi bi-door-closed-fill"></i></div>
+      <div><div class="kpi-label">Entlassungen (A03)</div><div class="kpi-value" id="kpi-a03">—</div></div>
+    </div></div>
+  </div>
+
+  <!-- Simulator-Control + Live-Feed -->
+  <div class="row g-3">
+    <div class="col-lg-4">
+      <div class="card shadow-sm mb-3">
+        <div class="card-header"><h2 class="h6 mb-0"><i class="bi bi-play-circle"></i> Simulator</h2></div>
+        <div class="card-body">
+          <p class="small text-body-secondary">
+            Erzeugt HL7 ADT-Nachrichten (wie das i-engineers Krankenhaus-Connector-System).
+            Die Events aktualisieren die Belegung der Kliniken live.
+          </p>
+          <label class="form-label small fw-semibold mb-1">Anzahl</label>
+          <input type="number" id="sim-count" class="form-control form-control-sm mb-2" value="50" min="1" max="500">
+          <div class="d-grid gap-2">
+            <button class="btn btn-sm btn-success" data-event="A01">
+              <i class="bi bi-door-open-fill"></i> 50× Aufnahme (A01)
+            </button>
+            <button class="btn btn-sm btn-warning" data-event="A08">
+              <i class="bi bi-arrow-repeat"></i> 50× Update (A08)
+            </button>
+            <button class="btn btn-sm btn-secondary" data-event="A03">
+              <i class="bi bi-door-closed-fill"></i> 50× Entlassung (A03)
+            </button>
+            <button class="btn btn-sm btn-outline-danger" data-event="">
+              <i class="bi bi-shuffle"></i> Mix (realistisch)
+            </button>
+          </div>
+
+          <hr>
+          <h3 class="h6 text-uppercase small text-body-secondary">CLI / externer Sender</h3>
+          <div class="small text-body-secondary mb-2">
+            Anderer Rechner kann per HL7 POSTen:
+          </div>
+          <pre class="small bg-body-tertiary rounded p-2 mb-2" style="font-size:0.72rem;">python3 scripts/hl7_adt_generator.py \
+  --event A01 -n 50 \
+  --post <span id="post-url">http://localhost:5050/api/adt/ingest</span></pre>
+          <button class="btn btn-sm btn-outline-secondary w-100" id="btn-copy-url">
+            <i class="bi bi-clipboard"></i> Endpunkt kopieren
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-lg-8">
+      <div class="card shadow-sm">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <h2 class="h6 mb-0"><i class="bi bi-list-columns-reverse"></i> Event-Stream</h2>
+          <span class="small text-body-secondary" id="feed-status">—</span>
+        </div>
+        <div class="card-body p-0">
+          <div class="table-responsive" style="max-height: 70vh; overflow-y: auto;">
+            <table class="table table-sm mb-0 align-middle small" id="feed-table">
+              <thead class="table-light sticky-top">
+                <tr>
+                  <th>Zeit</th>
+                  <th>Event</th>
+                  <th>SK</th>
+                  <th>Patient</th>
+                  <th>Klinik</th>
+                  <th>Station</th>
+                  <th>Quelle</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+.pulse-dot {
+  animation: pulse-fade 1.5s ease-in-out infinite;
+}
+@keyframes pulse-fade {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+tr.event-new {
+  animation: row-flash 2.5s ease-out;
+}
+@keyframes row-flash {
+  0% { background: #fff3cd; }
+  100% { background: transparent; }
+}
+</style>
+
+<script>
+(function () {
+  const esc = s => (s ?? "").toString().replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"})[c]);
+  const fmtTm = s => s ? new Date(s).toLocaleTimeString("de-DE", {hour:"2-digit", minute:"2-digit", second:"2-digit"}) : "—";
+
+  document.getElementById("post-url").textContent = location.origin + "/api/adt/ingest";
+
+  let lastId = 0;
+  const tbody = document.querySelector("#feed-table tbody");
+
+  async function pollStats() {
+    const s = await fetch("/api/adt/stats").then(r => r.json());
+    document.getElementById("kpi-total").textContent = (s.total || 0).toLocaleString("de-DE");
+    document.getElementById("kpi-a01").textContent = s.by_type?.A01 || 0;
+    document.getElementById("kpi-a08").textContent = s.by_type?.A08 || 0;
+    document.getElementById("kpi-a03").textContent = s.by_type?.A03 || 0;
+  }
+
+  function eventBadge(type) {
+    const m = { "A01": ["success", "Aufnahme"],
+                "A08": ["warning text-dark", "Update"],
+                "A03": ["secondary", "Entlassung"] };
+    const [cls, lbl] = m[type] || ["dark", type];
+    return `<span class="badge bg-${cls}">${type} · ${lbl}</span>`;
+  }
+
+  async function pollFeed() {
+    const url = lastId
+      ? `/api/adt/events?since_id=${lastId}&limit=200`
+      : "/api/adt/events?limit=50";
+    const events = await fetch(url).then(r => r.json());
+    if (!events.length) {
+      if (!lastId) tbody.innerHTML = `<tr><td colspan="7" class="text-center text-body-secondary py-4">Noch keine ADT-Events — Simulator starten!</td></tr>`;
+      return;
+    }
+    const isNew = lastId > 0;
+    lastId = Math.max(lastId, ...events.map(e => e.id));
+    // oben anfügen
+    const html = events.map(e => {
+      const skCls = "sk" + (e.sk || "").replace("SK", "");
+      const skBadge = e.sk ? `<span class="badge sk-badge ${skCls}">${esc(e.sk)}</span>` : "—";
+      return `
+        <tr class="${isNew ? 'event-new' : ''}">
+          <td class="text-body-secondary small">${fmtTm(e.created_at)}</td>
+          <td>${eventBadge(e.event_type)}</td>
+          <td>${skBadge}</td>
+          <td class="font-monospace small">${esc(e.patient_hl7_id || "–")}</td>
+          <td>${e.krankenhaus_id ? `<a href="/krankenhaus/${e.krankenhaus_id}" class="text-decoration-none">${esc(e.krankenhaus_name || "")}</a>` : '<span class="text-danger small">nicht zugeordnet</span>'}</td>
+          <td class="small">${esc(e.station || "")}</td>
+          <td class="small text-body-secondary">${esc(e.sending_facility || "")}</td>
+        </tr>`;
+    }).join("");
+    if (!lastId || tbody.firstElementChild?.querySelector("td[colspan]")) tbody.innerHTML = "";
+    tbody.insertAdjacentHTML("afterbegin", html);
+    // max 500 Zeilen halten
+    while (tbody.children.length > 500) tbody.removeChild(tbody.lastElementChild);
+    document.getElementById("feed-status").textContent =
+      `${tbody.children.length} Events · letzter #${lastId}`;
+  }
+
+  // Simulator-Buttons
+  document.querySelectorAll("button[data-event]").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const ev = btn.dataset.event || null;
+      const count = Number(document.getElementById("sim-count").value) || 50;
+      btn.disabled = true;
+      const original = btn.innerHTML;
+      btn.innerHTML = `<span class="spinner-border spinner-border-sm me-1"></span> Sende...`;
+      try {
+        await fetch("/api/adt/simulate", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({ event: ev, count }),
+        });
+        await Promise.all([pollFeed(), pollStats()]);
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = original;
+      }
+    });
+  });
+
+  document.getElementById("btn-copy-url").addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(location.origin + "/api/adt/ingest");
+      const b = document.getElementById("btn-copy-url");
+      b.innerHTML = '<i class="bi bi-check2"></i> Kopiert';
+      setTimeout(() => b.innerHTML = '<i class="bi bi-clipboard"></i> Endpunkt kopieren', 1500);
+    } catch {}
+  });
+
+  // Initial + Polling
+  pollStats();
+  pollFeed();
+  setInterval(pollFeed, 2500);
+  setInterval(pollStats, 5000);
+})();
+</script>
+{% endblock %}

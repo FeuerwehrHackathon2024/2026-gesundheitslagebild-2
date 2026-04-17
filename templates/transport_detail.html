@@ -20,6 +20,9 @@
       <i class="bi bi-arrow-left"></i> Zurück
     </a>
     <div class="d-flex gap-2">
+      <a class="btn btn-sm btn-danger" id="btn-pdf" href="#" target="_blank">
+        <i class="bi bi-file-earmark-pdf-fill"></i> PDF
+      </a>
       <button class="btn btn-sm btn-outline-secondary" onclick="window.print()">
         <i class="bi bi-printer"></i> Drucken
       </button>
@@ -89,6 +92,7 @@ const TRANSPORT_ID = {{ transport_id }};
 
   const skCls = "sk" + (t.sk || "").replace("SK", "");
 
+  document.getElementById("btn-pdf").href = `/api/transports/${TRANSPORT_ID}/pdf`;
   document.getElementById("t-header").innerHTML = `
     <h1 class="h3 mb-1">
       <i class="bi bi-file-earmark-text-fill text-danger"></i>

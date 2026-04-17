@@ -12,9 +12,22 @@
     <a href="/fahrten" class="small text-body-secondary text-decoration-none">
       <i class="bi bi-arrow-left"></i> Alle Fahrten
     </a>
-    <button class="btn btn-sm btn-outline-secondary" onclick="window.print()">
-      <i class="bi bi-printer"></i> Drucken
-    </button>
+    <div class="d-flex gap-2">
+      <div class="btn-group btn-group-sm" role="group" id="status-btns">
+        <button class="btn btn-outline-secondary" data-status="geplant">
+          <i class="bi bi-calendar-check"></i> Geplant
+        </button>
+        <button class="btn btn-outline-warning" data-status="unterwegs">
+          <i class="bi bi-truck"></i> Unterwegs
+        </button>
+        <button class="btn btn-outline-success" data-status="abgeschlossen">
+          <i class="bi bi-check2-circle"></i> Angekommen
+        </button>
+      </div>
+      <button class="btn btn-sm btn-outline-secondary" onclick="window.print()">
+        <i class="bi bi-printer"></i> Drucken
+      </button>
+    </div>
   </div>
 
   <div id="f-header" class="mt-2 mb-3"></div>
@@ -71,6 +84,40 @@ const FAHRT_ID = {{ fahrt_id }};
     : f.transportmittel === "KTW" ? '<span class="badge bg-warning text-dark fs-5">KTW</span>'
     : f.transportmittel === "BTW" ? '<span class="badge bg-info text-dark fs-5">BTW</span>'
     : '<span class="badge bg-primary fs-5">Taxi</span>';
+
+  function renderStatusButtons(currentStatus) {
+    document.querySelectorAll("#status-btns button").forEach(b => {
+      const active = b.dataset.status === currentStatus;
+      b.classList.toggle("active", active);
+      if (active) {
+        b.classList.remove("btn-outline-secondary", "btn-outline-warning", "btn-outline-success");
+        const filled = { "geplant": "btn-secondary",
+                         "unterwegs": "btn-warning",
+                         "abgeschlossen": "btn-success" }[currentStatus];
+        if (filled) b.classList.add(filled);
+      } else {
+        b.classList.remove("btn-secondary", "btn-warning", "btn-success");
+        b.classList.add({"geplant": "btn-outline-secondary",
+                         "unterwegs": "btn-outline-warning",
+                         "abgeschlossen": "btn-outline-success"}[b.dataset.status]);
+      }
+    });
+  }
+
+  document.querySelectorAll("#status-btns button").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const status = btn.dataset.status;
+      const resp = await fetch(`/api/fahrten/${FAHRT_ID}/status`, {
+        method: "POST", headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({ status }),
+      });
+      if (resp.ok) {
+        const j = await resp.json();
+        renderStatusButtons(j.status);
+      }
+    });
+  });
+  renderStatusButtons(f.status);
 
   document.getElementById("f-header").innerHTML = `
     <h1 class="h3 mb-1">

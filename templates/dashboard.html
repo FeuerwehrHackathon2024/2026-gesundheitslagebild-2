@@ -250,9 +250,14 @@
 
     <!-- Rechts: Karte + Tabellen -->
     <section class="col-xl-9 col-lg-8">
-      <div class="card shadow-sm mb-3">
+      <div class="card shadow-sm mb-3 position-relative">
         <div class="card-body p-0">
           <div id="map" class="dashboard-map rounded-3"></div>
+        </div>
+        <div class="position-absolute top-0 end-0 m-2" style="z-index: 1000;">
+          <button class="btn btn-sm btn-light shadow-sm" id="btn-map-mode" title="Farbmodus umschalten">
+            <i class="bi bi-droplet"></i> SK-Stufe
+          </button>
         </div>
       </div>
 

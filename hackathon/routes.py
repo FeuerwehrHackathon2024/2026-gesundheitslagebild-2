@@ -83,6 +83,16 @@ def info_page() -> str:
     return render_template("info.html")
 
 
+@main_bp.get("/adt")
+def adt_page() -> str:
+    return render_template("adt.html")
+
+
+@main_bp.get("/timecapsule")
+def timecapsule_page() -> str:
+    return render_template("timecapsule.html")
+
+
 @main_bp.post("/simulator/generate")
 def simulator_generate():
     payload = request.get_json(silent=True) or {}

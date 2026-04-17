@@ -6,9 +6,19 @@
 
   const SK_COLORS = { SK1: "#b71c1c", SK2: "#f57c00", SK3: "#fbc02d", keine: "#757575" };
 
+  const OCC_COLORS = {
+    frei:       { bg: "#2e7d32", label: "frei" },
+    mittel:     { bg: "#f9a825", label: "mittel" },
+    voll:       { bg: "#e65100", label: "voll" },
+    uebervoll:  { bg: "#b71c1c", label: "über" },
+    unbekannt:  { bg: "#757575", label: "?" },
+  };
+
   const state = {
     hub: null,
     kliniken: [],
+    occupancy: {},       // {kh_id: {status, fill_pct}}
+    colorMode: "sk",     // "sk" | "occupancy"
     map: null,
     cluster: null,
     hubMarker: null,
@@ -116,17 +126,35 @@
     state.hubRadiusCircle = radiusCircle;
   }
 
-  function makeMarker(k) {
+  function iconForKH(k) {
+    if (k.ausgeschlossen) {
+      return L.divIcon({
+        className: "",
+        html: `<div class="kh-pin excluded">✕</div>`,
+        iconSize: [22, 22], iconAnchor: [11, 11],
+      });
+    }
+    if (state.colorMode === "occupancy") {
+      const occ = state.occupancy[k.id];
+      const c = OCC_COLORS[occ?.status || "unbekannt"];
+      const fill = occ?.fill_pct != null ? `${occ.fill_pct}` : "–";
+      return L.divIcon({
+        className: "",
+        html: `<div class="kh-pin" style="background:${c.bg};color:#fff;">${fill}</div>`,
+        iconSize: [22, 22], iconAnchor: [11, 11],
+      });
+    }
     const sk = skClass(k.sk_max);
     const label = (k.sk_max || "").replace("SK", "") || "–";
-    const cls = k.ausgeschlossen ? "kh-pin excluded" : `kh-pin ${sk}`;
-    const icon = L.divIcon({
+    return L.divIcon({
       className: "",
-      html: `<div class="${cls}">${k.ausgeschlossen ? "✕" : label}</div>`,
-      iconSize: [22, 22],
-      iconAnchor: [11, 11],
+      html: `<div class="kh-pin ${sk}">${label}</div>`,
+      iconSize: [22, 22], iconAnchor: [11, 11],
     });
-    const marker = L.marker([k.lat, k.lon], { icon });
+  }
+
+  function makeMarker(k) {
+    const marker = L.marker([k.lat, k.lon], { icon: iconForKH(k) });
     marker.bindPopup(() => popupHtml(k), { maxWidth: 340 });
     marker.on("popupopen", e => {
       const btn = e.popup.getElement().querySelector("button[data-kh-id]");
@@ -136,6 +164,35 @@
     });
     marker._kh = k;
     return marker;
+  }
+
+  function refreshMarkerIcons() {
+    state.markerById.forEach((m, id) => {
+      const k = state.kliniken.find(x => x.id === id);
+      if (k) m.setIcon(iconForKH(k));
+    });
+  }
+
+  function wireMapModeToggle() {
+    const btn = document.getElementById("btn-map-mode");
+    if (!btn) return;
+    btn.addEventListener("click", () => {
+      state.colorMode = state.colorMode === "sk" ? "occupancy" : "sk";
+      btn.innerHTML = state.colorMode === "occupancy"
+        ? '<i class="bi bi-droplet-fill"></i> Belegung'
+        : '<i class="bi bi-droplet"></i> SK-Stufe';
+      if (state.colorMode === "occupancy") loadOccupancy();
+      refreshMarkerIcons();
+    });
+  }
+
+  async function loadOccupancy() {
+    try {
+      const arr = await fetch("/api/krankenhaeuser/occupancy").then(r => r.json());
+      state.occupancy = {};
+      arr.forEach(o => { state.occupancy[o.id] = o; });
+      if (state.colorMode === "occupancy") refreshMarkerIcons();
+    } catch (e) { console.warn("occupancy load", e); }
   }
 
   function popupHtml(k) {
@@ -807,8 +864,12 @@
       buildAllMarkers();
       wireFilters(opts);
       wireDispatch();
+      wireMapModeToggle();
       applyFilters();
       loadExistingActivity();
+      loadOccupancy();
+      // Bei Dispatch/Reset automatisch Belegung neu laden, zusätzlich alle 30s Polling
+      setInterval(loadOccupancy, 30000);
     } catch (err) {
       console.error("Dashboard init failed:", err);
       alert("Fehler beim Laden der Daten. Siehe Konsole.");
