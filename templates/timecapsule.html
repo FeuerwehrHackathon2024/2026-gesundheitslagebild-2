@@ -194,12 +194,24 @@
       </div>
 
       <div class="tc-card mb-3">
-        <h2><i class="bi bi-graph-up-arrow"></i> Auslastung über Zeit (% der Kapazität)</h2>
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <h2 class="mb-0"><i class="bi bi-graph-up-arrow"></i> Auslastung über Zeit</h2>
+          <div class="btn-group btn-group-sm" role="group">
+            <input type="radio" class="btn-check" name="chart-mode" id="cm-sk" value="sk" checked>
+            <label class="btn btn-outline-danger" for="cm-sk">nach SK-Stufe</label>
+            <input type="radio" class="btn-check" name="chart-mode" id="cm-ring" value="ring">
+            <label class="btn btn-outline-danger" for="cm-ring">nach Radius-Ring</label>
+          </div>
+        </div>
         <div style="position: relative; height: 300px;">
           <canvas id="tc-chart"></canvas>
         </div>
-        <div class="small text-body-secondary mt-2">
-          Y-Achse: <strong>Bettenbelegung in % der Kapazität</strong> pro SK-Stufe — so sind SK1/SK2/SK3 direkt vergleichbar, obwohl die absoluten Kapazitäten sehr unterschiedlich sind (SK1 ~19 k · SK3 ~210 k).
+        <div class="small text-body-secondary mt-2" id="tc-chart-hint">
+          Y-Achse: <strong>Bettenbelegung in % der Kapazität</strong> pro SK-Stufe — direkt vergleichbar.
+          <div class="mt-1"><i class="bi bi-info-circle"></i>
+            Warum steigt der Wert kaum über die Grundbelegung? Weil er über <strong>alle Kliniken</strong> im Scope summiert.
+            Nur nahe Kliniken werden gefüllt, ferne bleiben auf Grundbelegung — die Dispatch-Auslastung sieht man am besten in der <strong>Ring-Ansicht</strong>.
+          </div>
         </div>
       </div>
 
@@ -341,39 +353,44 @@
     const ctx = document.getElementById("tc-chart").getContext("2d");
     if (chart) chart.destroy();
 
-    const data = stateTC.snapshots.map(s => ({
-      x: new Date(s.t).valueOf(),
-      SK1: s.pct.SK1, SK2: s.pct.SK2, SK3: s.pct.SK3,
-    }));
+    const step = stateTC.snapshots.length > 250 ? Math.ceil(stateTC.snapshots.length / 120) : 1;
+    const dsIdx = [];
+    for (let i = 0; i < stateTC.snapshots.length; i++) {
+      if (i % step === 0 || i === stateTC.snapshots.length - 1) dsIdx.push(i);
+    }
+    const mode = (document.querySelector('input[name="chart-mode"]:checked') || {}).value || "sk";
 
-    // Down-Sample: bei >120 Punkten nehme jeden 2-3., damit Chart lesbar bleibt
-    const step = data.length > 250 ? Math.ceil(data.length / 120) : 1;
-    const dsData = data.filter((_, i) => i % step === 0 || i === data.length - 1);
+    let datasets = [];
+    if (mode === "sk") {
+      datasets = [
+        {label:"SK1 · %", borderColor:"#b71c1c", backgroundColor:"rgba(183,28,28,0.12)",
+         data: dsIdx.map(i => ({x: new Date(stateTC.snapshots[i].t).valueOf(), y: stateTC.snapshots[i].pct.SK1}))},
+        {label:"SK2 · %", borderColor:"#f57c00", backgroundColor:"rgba(245,124,0,0.10)",
+         data: dsIdx.map(i => ({x: new Date(stateTC.snapshots[i].t).valueOf(), y: stateTC.snapshots[i].pct.SK2}))},
+        {label:"SK3 · %", borderColor:"#fbc02d", backgroundColor:"rgba(251,192,45,0.08)",
+         data: dsIdx.map(i => ({x: new Date(stateTC.snapshots[i].t).valueOf(), y: stateTC.snapshots[i].pct.SK3}))},
+      ].map(d => ({...d, fill: true, pointRadius: 0, borderWidth: 2.2, tension: 0.35}));
+    } else {
+      const ringColors = {10:"#2e7d32", 30:"#66bb6a", 50:"#f9a825", 70:"#f57c00",
+                          100:"#e65100", 150:"#d84315", 250:"#b71c1c"};
+      const allRings = [10, 30, 50, 70, 100, 150, 250];
+      const usedRings = allRings.filter(r =>
+        stateTC.snapshots.some(s => (s.rings?.[String(r)]?.cap || 0) > 0));
+      datasets = usedRings.map(r => ({
+        label: `≤ ${r} km`,
+        borderColor: ringColors[r] || "#212529",
+        backgroundColor: "transparent",
+        data: dsIdx.map(i => ({
+          x: new Date(stateTC.snapshots[i].t).valueOf(),
+          y: stateTC.snapshots[i].rings?.[String(r)]?.pct ?? 0,
+        })),
+        fill: false, pointRadius: 0, borderWidth: 2.2, tension: 0.3,
+      }));
+    }
 
     chart = new Chart(ctx, {
       type: "line",
-      data: {
-        datasets: [
-          {
-            label: "SK1 · % belegt",
-            borderColor: "#b71c1c", backgroundColor: "rgba(183,28,28,0.12)",
-            fill: true, pointRadius: 0, borderWidth: 2.2, tension: 0.35,
-            data: dsData.map(d => ({ x: d.x, y: d.SK1 })),
-          },
-          {
-            label: "SK2 · % belegt",
-            borderColor: "#f57c00", backgroundColor: "rgba(245,124,0,0.10)",
-            fill: true, pointRadius: 0, borderWidth: 2.2, tension: 0.35,
-            data: dsData.map(d => ({ x: d.x, y: d.SK2 })),
-          },
-          {
-            label: "SK3 · % belegt",
-            borderColor: "#fbc02d", backgroundColor: "rgba(251,192,45,0.08)",
-            fill: true, pointRadius: 0, borderWidth: 2.2, tension: 0.35,
-            data: dsData.map(d => ({ x: d.x, y: d.SK3 })),
-          },
-        ],
-      },
+      data: { datasets },
       options: {
         responsive: true,
         maintainAspectRatio: false,
@@ -608,6 +625,9 @@
   }
 
   document.getElementById("tc-run").addEventListener("click", runSimulation);
+  // Chart-Mode-Toggle
+  document.querySelectorAll('input[name="chart-mode"]').forEach(r =>
+    r.addEventListener("change", () => { if (stateTC.snapshots.length) buildChart(); }));
 })();
 </script>
 {% endblock %}

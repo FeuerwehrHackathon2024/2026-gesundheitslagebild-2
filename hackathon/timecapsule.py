@@ -224,6 +224,17 @@ def run_capsule(params: CapsuleParams) -> dict:
         ranked.sort(key=lambda t: t[2])
         kh_candidates[sk] = ranked
 
+    # Ring-Buckets: welche Kliniken liegen in welchem Ring? (für Per-Ring-Auslastung)
+    # Ein Klinik-Eintrag landet in jedem Ring, dessen Radius >= dist ist — aber für die
+    # Auslastungs-Auswertung wollen wir die **diskreten** Rings (0-10, 10-30, 30-50, …).
+    # Hier: für jeden Ring-Bound alle KHs mit dist <= bound (kumulativ), damit die
+    # Chart-Linien den Verlauf "innerhalb des 10-km-Rings" vs. "innerhalb 30-km-Rings" zeigen.
+    ring_buckets: dict[int, set[int]] = {}
+    # Nutze SK3-Kandidatenliste als Union (SK3 umfasst alle, da jede SK-fähige Klinik auch SK3 kann)
+    all_kh_dists = [(kh.id, d) for kh, _, d in kh_candidates.get("SK3", [])]
+    for ring in RADIUS_RINGS_KM:
+        ring_buckets[ring] = {kh_id for kh_id, d in all_kh_dists if d <= ring}
+
     sim_time = start
     patient_idx = 0
     for day in range(params.days):
@@ -253,7 +264,7 @@ def run_capsule(params: CapsuleParams) -> dict:
 
             # Snapshot wenn fällig
             while next_snapshot <= arr_dt and next_snapshot <= end:
-                snapshots.append(_capture_snapshot(next_snapshot, bundesland_ids))
+                snapshots.append(_capture_snapshot(next_snapshot, bundesland_ids, ring_buckets))
                 next_snapshot += snapshot_interval
 
             # Auch Entlassungen durchführen die bis arr_dt passieren
@@ -340,7 +351,7 @@ def run_capsule(params: CapsuleParams) -> dict:
 
     # Restliche Snapshots + noch anstehende Entlassungen nach Zeitraum-Ende
     while next_snapshot <= end:
-        snapshots.append(_capture_snapshot(next_snapshot, bundesland_ids))
+        snapshots.append(_capture_snapshot(next_snapshot, bundesland_ids, ring_buckets))
         next_snapshot += snapshot_interval
 
     while pending_discharges and pending_discharges[0][0] <= end:
@@ -410,8 +421,13 @@ def run_capsule(params: CapsuleParams) -> dict:
     }
 
 
-def _capture_snapshot(at: datetime, bundesland_ids: set[int] | None = None) -> dict:
-    """Summiert aktuelle Belegung für Chart-Zeile. Optional auf Bundesland-Scope beschränkt."""
+def _capture_snapshot(at: datetime, bundesland_ids: set[int] | None = None,
+                      ring_buckets: dict[int, set[int]] | None = None) -> dict:
+    """Summiert aktuelle Belegung für Chart-Zeile. Optional auf Bundesland-Scope beschränkt.
+
+    ring_buckets: {ring_km: set(kh_id)} — wenn gesetzt, wird zusätzlich die
+    Auslastung pro Ring (aggregiert über alle SK-Stufen) berechnet.
+    """
     from sqlalchemy import func
     q = db.session.query(
         func.sum(KrankenhausBelegung.kapazitaet_sk1),
@@ -427,6 +443,31 @@ def _capture_snapshot(at: datetime, bundesland_ids: set[int] | None = None) -> d
     cap1, cap2, cap3, bel1, bel2, bel3 = [x or 0 for x in agg]
     def _pct(b, c):
         return round(b / c * 100, 1) if c else 0.0
+
+    # Pro-Ring-Auslastung (alle SK zusammen) — zeigt wie stark die Ringe gefüllt sind
+    rings_data: dict[str, dict] = {}
+    if ring_buckets:
+        for ring_km, kh_ids in ring_buckets.items():
+            if not kh_ids:
+                rings_data[str(ring_km)] = {"cap": 0, "bel": 0, "pct": 0.0, "n_kh": 0}
+                continue
+            rq = db.session.query(
+                func.sum(KrankenhausBelegung.kapazitaet_sk1
+                         + KrankenhausBelegung.kapazitaet_sk2
+                         + KrankenhausBelegung.kapazitaet_sk3),
+                func.sum(KrankenhausBelegung.belegung_sk1
+                         + KrankenhausBelegung.belegung_sk2
+                         + KrankenhausBelegung.belegung_sk3),
+            ).filter(KrankenhausBelegung.krankenhaus_id.in_(kh_ids))
+            rcap, rbel = rq.first()
+            rcap = rcap or 0
+            rbel = rbel or 0
+            rings_data[str(ring_km)] = {
+                "cap": rcap, "bel": rbel,
+                "pct": round(rbel / rcap * 100, 1) if rcap else 0.0,
+                "n_kh": len(kh_ids),
+            }
+
     return {
         "t": at.isoformat(),
         "cap": {"SK1": cap1, "SK2": cap2, "SK3": cap3},
@@ -437,6 +478,7 @@ def _capture_snapshot(at: datetime, bundesland_ids: set[int] | None = None) -> d
         "pct": {"SK1": _pct(bel1, cap1),
                 "SK2": _pct(bel2, cap2),
                 "SK3": _pct(bel3, cap3)},
+        "rings": rings_data,
     }
 
 
