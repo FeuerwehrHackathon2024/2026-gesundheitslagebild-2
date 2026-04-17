@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+
+{% block title %}Info · MANV-Dispatch{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+  <div class="row">
+    <div class="col-lg-9">
+      <h1 class="h3"><i class="bi bi-info-circle text-danger"></i> Über dieses Projekt</h1>
+      <p class="text-body-secondary">
+        MANV-Dispatch-Prototyp — Verteilung von Verletzten aus einem zentralen Hub
+        auf Krankenhäuser unter Berücksichtigung von Sichtungskategorien,
+        Versorgungsfähigkeit und aktueller Bettenbelegung.
+      </p>
+
+      <div class="row g-3 mt-2">
+        <div class="col-md-6">
+          <div class="card shadow-sm h-100">
+            <div class="card-body">
+              <h5><i class="bi bi-hospital-fill text-danger"></i> Datenbasis</h5>
+              <ul class="small mb-0">
+                <li><strong>4.385 Krankenhäuser</strong> (3.727 geocodiert)</li>
+                <li>Quellen: amtlicher Qualitätsbericht 2024 + QraGo-DB (Google Places)</li>
+                <li>SK1/SK2/SK3-Fähigkeit abgeleitet aus Intensivmedizin, Notaufnahme, BG-Zulassung, Fachabteilungen</li>
+                <li>Geschätzte Kapazität pro SK-Stufe: 5 % / 30 % / 40 % der Betten</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-6">
+          <div class="card shadow-sm h-100">
+            <div class="card-body">
+              <h5><i class="bi bi-geo-alt-fill text-danger"></i> Hub Süd</h5>
+              <ul class="small mb-0">
+                <li>Standort: <strong>Ulm</strong> (Universitätsklinikum)</li>
+                <li>Kapazität: ~250 Verletzte/Tag</li>
+                <li>Vorwarnung: 72 h</li>
+                <li>Trauma-Level-1-Zentrum</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-md-6">
+          <div class="card shadow-sm h-100">
+            <div class="card-body">
+              <h5><i class="bi bi-diagram-3-fill text-danger"></i> Verteilungs-Regeln</h5>
+              <ul class="small mb-0">
+                <li><span class="badge sk-badge sk1">SK1</span> vital gefährdet — 5 Tage, braucht SK1-Klinik</li>
+                <li><span class="badge sk-badge sk2">SK2</span> schwer verletzt — 3 Tage, SK1 oder SK2-Klinik</li>
+                <li><span class="badge sk-badge sk3">SK3</span> leicht verletzt — 1 Tag, beliebige Klinik</li>
+                <li>Reihenfolge: SK1 zuerst, dann SK2, dann SK3</li>
+                <li>Pro Patient: nächste Klinik mit freier Kapazität (Radius erweitert sich automatisch)</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-6">
+          <div class="card shadow-sm h-100">
+            <div class="card-body">
+              <h5><i class="bi bi-workflow-fill text-danger"></i> Workflow</h5>
+              <ol class="small mb-0">
+                <li><strong>Status quo</strong> simulieren (Grundbelegung %)</li>
+                <li><strong>Patientenliste</strong> hochladen (IVENA-XLSX) <em>oder</em> im <a href="/simulator">Simulator</a> erzeugen</li>
+                <li><strong>Verteilung</strong> starten — Transportaufträge werden erzeugt</li>
+                <li><strong>Patienten-Übersicht</strong> zeigt wohin jeder Patient kommt</li>
+              </ol>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <hr class="my-4">
+
+      <h4>Tech-Stack</h4>
+      <ul class="small">
+        <li><strong>Backend</strong>: Flask 3 + SQLAlchemy + Postgres 16, Gunicorn (Docker)</li>
+        <li><strong>Frontend</strong>: Bootstrap 5.3, Leaflet 1.9 + MarkerCluster, Vanilla JS</li>
+        <li><strong>Daten</strong>: openpyxl für XLSX-Parsing und -Generierung</li>
+      </ul>
+
+      <div class="alert alert-warning small mt-3">
+        <strong>Hinweis:</strong> Simulation + Prototyp. Echte Leitstellenbewertung erfordert
+        medizinische Validierung und Integration mit IVENA.
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

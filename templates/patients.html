@@ -1,0 +1,189 @@
+{% extends "base.html" %}
+
+{% block title %}Patienten · MANV-Dispatch{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+  <div class="d-flex justify-content-between align-items-start mb-3">
+    <div>
+      <h1 class="h3 mb-1"><i class="bi bi-people-fill text-danger"></i> Patienten-Übersicht</h1>
+      <p class="text-body-secondary mb-0">Wohin geht jeder Patient? SK-Stufe, Klinik, Entfernung, Aufenthaltsdauer.</p>
+    </div>
+    <a href="/" class="btn btn-outline-danger">
+      <i class="bi bi-arrow-left"></i> Dashboard
+    </a>
+  </div>
+
+  <div class="card shadow-sm mb-3">
+    <div class="card-body">
+      <div class="row g-2 align-items-end">
+        <div class="col-md-4">
+          <label class="form-label small fw-semibold">Batch</label>
+          <select class="form-select form-select-sm" id="p-batch">
+            <option value="">Alle Batches</option>
+          </select>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label small fw-semibold">SK-Stufe</label>
+          <div class="btn-group w-100" role="group">
+            <input type="checkbox" class="btn-check" id="p-sk1" checked><label class="btn btn-sm btn-outline-sk1" for="p-sk1">SK1</label>
+            <input type="checkbox" class="btn-check" id="p-sk2" checked><label class="btn btn-sm btn-outline-sk2" for="p-sk2">SK2</label>
+            <input type="checkbox" class="btn-check" id="p-sk3" checked><label class="btn btn-sm btn-outline-sk3" for="p-sk3">SK3</label>
+          </div>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label small fw-semibold">Status</label>
+          <select class="form-select form-select-sm" id="p-status">
+            <option value="">Alle</option>
+            <option value="assigned">Zugewiesen</option>
+            <option value="pending">Wartend</option>
+            <option value="unassigned">Nicht vermittelbar</option>
+          </select>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label small fw-semibold">Suche</label>
+          <input type="text" class="form-control form-control-sm" id="p-search" placeholder="ID / Klinik…">
+        </div>
+      </div>
+      <div class="mt-2 small text-body-secondary">
+        <span id="p-count">—</span> Patienten gefiltert
+        <span class="float-end">
+          <a href="#" id="p-export" class="text-decoration-none">
+            <i class="bi bi-download"></i> Als CSV herunterladen
+          </a>
+        </span>
+      </div>
+    </div>
+  </div>
+
+  <div class="card shadow-sm">
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-sm table-hover mb-0 align-middle" id="p-table">
+          <thead class="table-light">
+            <tr>
+              <th>SK</th>
+              <th>Patient-ID</th>
+              <th>Herkunft</th>
+              <th>→ Klinik</th>
+              <th>Ort</th>
+              <th>Bundesland</th>
+              <th class="text-end">Entf. (km)</th>
+              <th class="text-end">Dauer (Tage)</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td colspan="9" class="text-center text-body-secondary py-4">
+              <span class="spinner-border spinner-border-sm me-1"></span> Lade…
+            </td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(async function () {
+  let allPatients = [];
+  const esc = s => (s ?? "").toString().replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"})[c]);
+
+  async function loadBatches() {
+    const sel = document.getElementById("p-batch");
+    const batches = await fetch("/api/batches").then(r => r.json());
+    batches.forEach(b => {
+      const o = document.createElement("option");
+      o.value = b.id;
+      o.textContent = `#${b.id} — ${b.filename} (${b.total} Patienten)`;
+      sel.appendChild(o);
+    });
+  }
+
+  async function loadPatients() {
+    const bid = document.getElementById("p-batch").value;
+    const url = bid ? `/api/patients?batch_id=${bid}` : `/api/patients`;
+    allPatients = await fetch(url).then(r => r.json());
+    render();
+  }
+
+  function render() {
+    const sks = {
+      SK1: document.getElementById("p-sk1").checked,
+      SK2: document.getElementById("p-sk2").checked,
+      SK3: document.getElementById("p-sk3").checked,
+    };
+    const status = document.getElementById("p-status").value;
+    const q = document.getElementById("p-search").value.trim().toLowerCase();
+
+    const visible = allPatients.filter(p => {
+      if (!sks[p.sk]) return false;
+      if (status && p.status !== status) return false;
+      if (q) {
+        const hay = `${p.external_id || ""} ${p.ziel?.name || ""} ${p.ziel?.ort || ""}`.toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      return true;
+    });
+
+    document.getElementById("p-count").textContent = visible.length;
+    const tbody = document.querySelector("#p-table tbody");
+    if (!visible.length) {
+      tbody.innerHTML = `<tr><td colspan="9" class="text-center text-body-secondary py-4">Keine Patienten</td></tr>`;
+      return;
+    }
+    tbody.innerHTML = visible.map(p => {
+      const skCls = "sk" + p.sk.replace("SK", "");
+      const ziel = p.ziel || {};
+      const statusBadge = p.status === "assigned"
+        ? `<span class="badge bg-success">zugewiesen</span>`
+        : p.status === "unassigned"
+          ? `<span class="badge bg-danger">offen</span>`
+          : `<span class="badge bg-warning text-dark">wartend</span>`;
+      return `
+        <tr>
+          <td><span class="badge sk-badge ${skCls}">${esc(p.sk)}</span></td>
+          <td><span class="font-monospace small">${esc(p.external_id || "#" + p.id)}</span></td>
+          <td>${esc(p.quelle || "")}</td>
+          <td class="fw-semibold">${esc(ziel.name || "—")}</td>
+          <td>${esc(ziel.ort || "")}</td>
+          <td class="small text-body-secondary">${esc(ziel.bundesland || "")}</td>
+          <td class="text-end">${p.distanz_km != null ? p.distanz_km.toFixed(1) : "–"}</td>
+          <td class="text-end">${p.aufenthaltsdauer_tage ?? "–"}</td>
+          <td>${statusBadge}</td>
+        </tr>`;
+    }).join("");
+  }
+
+  function exportCsv(e) {
+    e.preventDefault();
+    const rows = [["SK", "Patient-ID", "Herkunft", "Klinik", "Ort", "Bundesland", "Entfernung_km", "Aufenthaltstage", "Status"]];
+    allPatients.forEach(p => {
+      const z = p.ziel || {};
+      rows.push([
+        p.sk, p.external_id || p.id, p.quelle || "",
+        z.name || "", z.ort || "", z.bundesland || "",
+        p.distanz_km != null ? p.distanz_km.toFixed(1) : "",
+        p.aufenthaltsdauer_tage ?? "",
+        p.status,
+      ]);
+    });
+    const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `patienten_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+
+  document.getElementById("p-batch").addEventListener("change", loadPatients);
+  ["p-sk1", "p-sk2", "p-sk3", "p-status"].forEach(id => document.getElementById(id).addEventListener("change", render));
+  document.getElementById("p-search").addEventListener("input", render);
+  document.getElementById("p-export").addEventListener("click", exportCsv);
+
+  await loadBatches();
+  await loadPatients();
+})();
+</script>
+{% endblock %}

@@ -3,26 +3,145 @@
   --sk2: #f57c00;
   --sk3: #fbc02d;
   --sk-none: #757575;
+  --brand: #c62828;
+  --brand-dark: #8c1818;
 }
 
 html, body { height: 100%; }
-body { background: #f7f7f9; }
 
-.sidebar-scroll {
-  max-height: calc(100vh - 56px);
-  overflow-y: auto;
-  position: sticky;
-  top: 56px;
+.app-body {
+  background: #f3f4f6;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
 }
 
+.app-main {
+  flex: 1 0 auto;
+}
+
+.app-footer {
+  flex-shrink: 0;
+  border-top: 1px solid rgba(0,0,0,0.06);
+  background: #fff;
+}
+
+/* --- Navbar --- */
+.app-navbar {
+  background: #fff;
+  border-bottom: 1px solid rgba(0,0,0,0.08);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  padding: 0.5rem 0;
+}
+.app-navbar .navbar-brand { padding-top: 0; padding-bottom: 0; }
+.app-navbar .brand-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px; height: 38px;
+  border-radius: 10px;
+  background: var(--brand);
+  color: #fff;
+  font-size: 20px;
+  box-shadow: 0 1px 3px rgba(198,40,40,0.35);
+}
+.app-navbar .nav-link {
+  color: #495057;
+  font-weight: 500;
+  padding: 0.5rem 0.9rem;
+  border-radius: 8px;
+  margin-right: 2px;
+}
+.app-navbar .nav-link:hover { background: #f8f9fa; color: var(--brand); }
+.app-navbar .nav-link.active {
+  background: #fee2e2;
+  color: var(--brand-dark);
+}
+.hub-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #fee2e2;
+  color: var(--brand-dark);
+  padding: 0.35rem 0.65rem;
+  border-radius: 6px;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+/* --- KPI Cards --- */
+.kpi-row .kpi-card {
+  background: #fff;
+  border-radius: 12px;
+  padding: 1rem;
+  display: flex;
+  gap: 0.9rem;
+  align-items: center;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  height: 100%;
+}
+.kpi-icon {
+  width: 44px; height: 44px;
+  border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 20px;
+  flex-shrink: 0;
+}
+.kpi-label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  color: #6c757d;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.kpi-value {
+  font-size: 1.5rem;
+  font-weight: 700;
+  line-height: 1.1;
+  color: #212529;
+}
+.kpi-sub {
+  font-size: 0.72rem;
+  color: #6c757d;
+}
+
+/* --- Map --- */
 .dashboard-map {
-  height: calc(100vh - 56px - 320px);
-  min-height: 480px;
+  height: calc(100vh - 370px);
+  min-height: 440px;
   width: 100%;
-  border-bottom: 1px solid rgba(0,0,0,0.1);
+  border-radius: 12px;
 }
 
-/* --- SK Color palette --- */
+/* --- Workflow step layout --- */
+.workflow-step {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+  margin-bottom: 0;
+}
+.step-num {
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  background: #e9ecef;
+  color: #495057;
+  font-weight: 700;
+  font-size: 0.85rem;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.step-num.step-active {
+  background: var(--brand);
+  color: #fff;
+}
+.batch-info-box {
+  background: #f8f9fa;
+  border-left: 3px solid var(--brand);
+  padding: 0.5rem 0.65rem;
+  border-radius: 0 6px 6px 0;
+}
+
+/* --- SK Color palette (Buttons + Badges) --- */
 .btn-outline-sk1 {
   --bs-btn-color: var(--sk1);
   --bs-btn-border-color: var(--sk1);
@@ -53,7 +172,6 @@ body { background: #f7f7f9; }
   --bs-btn-active-border-color: var(--sk3);
   --bs-btn-active-color: #000;
 }
-
 .sk-badge {
   font-size: 0.72rem;
   min-width: 2.1rem;
@@ -79,11 +197,18 @@ body { background: #f7f7f9; }
 .kh-pin.sk2 { background: var(--sk2); }
 .kh-pin.sk3 { background: var(--sk3); color: #000; }
 .kh-pin.sk-none { background: var(--sk-none); }
+.kh-pin.excluded {
+  background: #2c2c2c;
+  color: #fff;
+  opacity: 0.75;
+  border-color: #ff5252;
+  box-shadow: 0 0 0 2px rgba(255,82,82,0.25), 0 1px 4px rgba(0,0,0,0.5);
+}
 
 .hub-pin {
   width: 46px; height: 46px;
   border-radius: 50%;
-  background: #c62828;
+  background: var(--brand);
   color: #fff;
   border: 3px solid #fff;
   box-shadow: 0 2px 8px rgba(0,0,0,0.6);
@@ -98,29 +223,74 @@ body { background: #f7f7f9; }
 }
 
 /* --- Popup --- */
-.kh-popup h6 {
-  font-size: 1rem;
-  margin-bottom: .25rem;
+.kh-popup h6 { font-size: 1rem; margin-bottom: .25rem; }
+.kh-popup .popup-meta { font-size: .78rem; color: #555; }
+.kh-popup .popup-flags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.kh-popup .popup-flags .badge { font-size: .66rem; font-weight: 500; }
+.kh-popup .popup-reason { font-size: .75rem; color: #777; margin-top: .4rem; font-style: italic; }
+
+/* --- Tables --- */
+#klinik-table tbody tr,
+#transport-table tbody tr { cursor: pointer; }
+#klinik-table tbody tr:hover,
+#transport-table tbody tr:hover { background: rgba(0,0,0,0.035); }
+
+/* --- Dropzone --- */
+.dropzone {
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  min-height: 92px;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  border: 2px dashed #cfd4da;
+  color: #6c757d;
+  background: #fafbfc;
 }
-.kh-popup .popup-meta {
-  font-size: .78rem;
-  color: #555;
+.dropzone i { font-size: 1.8rem; margin-bottom: 0.3rem; color: #6c757d; }
+.dropzone:hover,
+.dropzone.dz-active {
+  background: #fff5f5;
+  border-color: var(--brand);
+  color: var(--brand-dark);
 }
-.kh-popup .popup-flags {
-  display: flex; flex-wrap: wrap; gap: 4px;
-  margin-top: 6px;
+.dropzone:hover i,
+.dropzone.dz-active i { color: var(--brand); }
+
+/* --- Tabs Card --- */
+.nav-tabs .nav-link {
+  border-radius: 0;
+  padding: 0.75rem 1rem;
+  color: #495057;
+  border: none;
+  border-bottom: 3px solid transparent;
 }
-.kh-popup .popup-flags .badge {
-  font-size: .66rem;
-  font-weight: 500;
-}
-.kh-popup .popup-reason {
-  font-size: .75rem;
-  color: #777;
-  margin-top: .4rem;
-  font-style: italic;
+.nav-tabs .nav-link.active {
+  background: transparent;
+  color: var(--brand-dark);
+  border-bottom-color: var(--brand);
+  font-weight: 600;
 }
 
-/* Table tweaks */
-#klinik-table tbody tr { cursor: pointer; }
-#klinik-table tbody tr:hover { background: rgba(0,0,0,0.04); }
+/* --- Toggle button active --- */
+#btn-toggle-routes.active {
+  background: #343a40;
+  color: #fff;
+  border-color: #343a40;
+}
+
+/* --- Tab badge --- */
+#tab-transport-count {
+  font-size: 0.7rem;
+  padding: 0.2rem 0.4rem;
+}
+
+/* --- Generic card polish --- */
+.card-header {
+  border-bottom: 1px solid rgba(0,0,0,0.06);
+}
+.card.shadow-sm { box-shadow: 0 1px 3px rgba(0,0,0,0.05) !important; }
+
+/* Responsive: auf kleinen Screens Sidebar zuerst */
+@media (max-width: 991.98px) {
+  .dashboard-map { height: 55vh; }
+}

@@ -1,142 +1,280 @@
 {% extends "base.html" %}
 
-{% block title %}Dashboard · Krankenhäuser{% endblock %}
+{% block title %}Dashboard · MANV-Dispatch{% endblock %}
 
 {% block content %}
-<div class="container-fluid px-0">
-  <div class="row g-0">
+<div class="container-fluid py-3">
 
-    <!-- Sidebar: Filter -->
-    <aside class="col-lg-3 col-xl-3 border-end bg-body-tertiary sidebar-scroll">
-      <div class="p-3">
-        <h2 class="h6 text-uppercase text-body-secondary mb-3">
-          <i class="bi bi-funnel-fill me-1"></i> Filter
-        </h2>
+  <!-- ========= KPI-Row ========= -->
+  <div class="row g-3 mb-3 kpi-row">
+    <div class="col-6 col-lg-3">
+      <div class="kpi-card">
+        <div class="kpi-icon bg-danger-subtle text-danger-emphasis"><i class="bi bi-hospital-fill"></i></div>
+        <div>
+          <div class="kpi-label">Kliniken</div>
+          <div class="kpi-value" id="kpi-kliniken">—</div>
+          <div class="kpi-sub"><span id="kpi-sk1">–</span> SK1 · <span id="kpi-sk2">–</span> SK2 · <span id="kpi-sk3">–</span> SK3</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-lg-3">
+      <div class="kpi-card">
+        <div class="kpi-icon bg-success-subtle text-success-emphasis"><i class="bi bi-bed-fill"></i></div>
+        <div>
+          <div class="kpi-label">Freie Betten</div>
+          <div class="kpi-value" id="kpi-frei">—</div>
+          <div class="kpi-sub">nach Grundbelegung</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-lg-3">
+      <div class="kpi-card">
+        <div class="kpi-icon bg-warning-subtle text-warning-emphasis"><i class="bi bi-truck"></i></div>
+        <div>
+          <div class="kpi-label">Transportaufträge</div>
+          <div class="kpi-value" id="kpi-transports">—</div>
+          <div class="kpi-sub" id="kpi-transport-sub">offen</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-lg-3">
+      <div class="kpi-card">
+        <div class="kpi-icon bg-primary-subtle text-primary-emphasis"><i class="bi bi-people-fill"></i></div>
+        <div>
+          <div class="kpi-label">Aktueller Batch</div>
+          <div class="kpi-value" id="kpi-batch-total">—</div>
+          <div class="kpi-sub" id="kpi-batch-sub">kein Batch aktiv</div>
+        </div>
+      </div>
+    </div>
+  </div>
 
-        <!-- Live Counter -->
-        <div id="stats-bar" class="alert alert-secondary py-2 px-3 small mb-3 d-flex justify-content-between align-items-center">
-          <span><strong id="stats-visible">—</strong> / <span id="stats-total">—</span> Kliniken</span>
-          <div class="d-flex gap-1">
-            <span class="badge sk-badge sk1" title="SK1"><span id="stats-sk1">–</span></span>
-            <span class="badge sk-badge sk2" title="SK2"><span id="stats-sk2">–</span></span>
-            <span class="badge sk-badge sk3" title="SK3"><span id="stats-sk3">–</span></span>
+  <!-- ========= Haupt-Grid ========= -->
+  <div class="row g-3">
+
+    <!-- Links: Filter + Dispatch -->
+    <aside class="col-xl-3 col-lg-4">
+
+      <!-- Filter-Card -->
+      <div class="card shadow-sm mb-3">
+        <div class="card-header bg-body d-flex justify-content-between align-items-center">
+          <h2 class="h6 mb-0"><i class="bi bi-funnel-fill text-danger"></i> Karten-Filter</h2>
+          <button class="btn btn-sm btn-link text-decoration-none p-0" id="btn-reset" title="Filter zurücksetzen">
+            <i class="bi bi-arrow-counterclockwise"></i>
+          </button>
+        </div>
+        <div class="card-body">
+
+          <!-- Live Counter -->
+          <div id="stats-bar" class="alert alert-secondary py-2 px-3 small mb-3 d-flex justify-content-between align-items-center">
+            <span><strong id="stats-visible">—</strong> / <span id="stats-total">—</span></span>
+            <div class="d-flex gap-1">
+              <span class="badge sk-badge sk1"><span id="stats-sk1">–</span></span>
+              <span class="badge sk-badge sk2"><span id="stats-sk2">–</span></span>
+              <span class="badge sk-badge sk3"><span id="stats-sk3">–</span></span>
+            </div>
           </div>
-        </div>
 
-        <!-- SK-Stufe -->
-        <div class="mb-3">
-          <label class="form-label fw-semibold mb-2">Sichtungskategorie</label>
-          <div class="btn-group w-100" role="group" aria-label="SK-Stufe">
-            <input type="checkbox" class="btn-check" id="flt-sk1" checked data-sk="1">
-            <label class="btn btn-outline-sk1" for="flt-sk1">SK1</label>
-
-            <input type="checkbox" class="btn-check" id="flt-sk2" checked data-sk="2">
-            <label class="btn btn-outline-sk2" for="flt-sk2">SK2</label>
-
-            <input type="checkbox" class="btn-check" id="flt-sk3" checked data-sk="3">
-            <label class="btn btn-outline-sk3" for="flt-sk3">SK3</label>
+          <div class="mb-3">
+            <label class="form-label fw-semibold mb-2 small text-uppercase text-body-secondary">Sichtungskategorie</label>
+            <div class="btn-group w-100" role="group">
+              <input type="checkbox" class="btn-check" id="flt-sk1" checked data-sk="1">
+              <label class="btn btn-outline-sk1" for="flt-sk1">SK1</label>
+              <input type="checkbox" class="btn-check" id="flt-sk2" checked data-sk="2">
+              <label class="btn btn-outline-sk2" for="flt-sk2">SK2</label>
+              <input type="checkbox" class="btn-check" id="flt-sk3" checked data-sk="3">
+              <label class="btn btn-outline-sk3" for="flt-sk3">SK3</label>
+            </div>
           </div>
-          <div class="form-text">Klinik muss die gewählte Stufe versorgen können.</div>
-        </div>
 
-        <!-- Radius um Hub -->
-        <div class="mb-3">
-          <label for="flt-radius" class="form-label fw-semibold d-flex justify-content-between mb-2">
-            <span>Radius um Hub</span>
-            <span class="text-body-secondary"><span id="flt-radius-val">100</span> km</span>
-          </label>
-          <input type="range" class="form-range" id="flt-radius" min="10" max="500" step="10" value="100">
-        </div>
-
-        <!-- Mindest-Betten -->
-        <div class="mb-3">
-          <label for="flt-betten" class="form-label fw-semibold d-flex justify-content-between mb-2">
-            <span>Mindest-Betten</span>
-            <span class="text-body-secondary">≥ <span id="flt-betten-val">0</span></span>
-          </label>
-          <input type="range" class="form-range" id="flt-betten" min="0" max="3000" step="50" value="0">
-        </div>
-
-        <!-- Versorgungs-Flags -->
-        <div class="mb-3">
-          <label class="form-label fw-semibold mb-2">Versorgung</label>
-          <div class="row g-1" id="flag-checks">
-            <div class="col-6"><div class="form-check form-check-sm"><input class="form-check-input" type="checkbox" id="flg-its" data-flag="hat_intensivmedizin"><label class="form-check-label small" for="flg-its">Intensivmed.</label></div></div>
-            <div class="col-6"><div class="form-check form-check-sm"><input class="form-check-input" type="checkbox" id="flg-notfall" data-flag="hat_notaufnahme"><label class="form-check-label small" for="flg-notfall">Notaufnahme</label></div></div>
-            <div class="col-6"><div class="form-check form-check-sm"><input class="form-check-input" type="checkbox" id="flg-bg" data-flag="hat_bg_zulassung"><label class="form-check-label small" for="flg-bg">BG-Zulassung</label></div></div>
-            <div class="col-6"><div class="form-check form-check-sm"><input class="form-check-input" type="checkbox" id="flg-radio" data-flag="hat_radiologie"><label class="form-check-label small" for="flg-radio">Radiologie</label></div></div>
-            <div class="col-6"><div class="form-check form-check-sm"><input class="form-check-input" type="checkbox" id="flg-onko" data-flag="hat_onkologie"><label class="form-check-label small" for="flg-onko">Onkologie</label></div></div>
-            <div class="col-6"><div class="form-check form-check-sm"><input class="form-check-input" type="checkbox" id="flg-psych" data-flag="hat_psychiatrie"><label class="form-check-label small" for="flg-psych">Psychiatrie</label></div></div>
-            <div class="col-6"><div class="form-check form-check-sm"><input class="form-check-input" type="checkbox" id="flg-geri" data-flag="hat_geriatrie"><label class="form-check-label small" for="flg-geri">Geriatrie</label></div></div>
-            <div class="col-6"><div class="form-check form-check-sm"><input class="form-check-input" type="checkbox" id="flg-dial" data-flag="hat_dialyse"><label class="form-check-label small" for="flg-dial">Dialyse</label></div></div>
+          <div class="mb-3">
+            <label for="flt-radius" class="form-label fw-semibold d-flex justify-content-between mb-1 small text-uppercase text-body-secondary">
+              <span>Radius um Hub</span>
+              <span class="text-body"><span id="flt-radius-val">100</span> km</span>
+            </label>
+            <input type="range" class="form-range" id="flt-radius" min="10" max="1000" step="10" value="100">
           </div>
-        </div>
 
-        <!-- Special -->
-        <div class="mb-3">
-          <label class="form-label fw-semibold mb-2">Profil</label>
-          <div class="form-check form-check-sm">
-            <input class="form-check-input" type="checkbox" id="flt-uni">
-            <label class="form-check-label small" for="flt-uni">Nur Uni-/Lehrkrankenhäuser</label>
+          <div class="mb-3">
+            <label for="flt-betten" class="form-label fw-semibold d-flex justify-content-between mb-1 small text-uppercase text-body-secondary">
+              <span>Mindest-Betten</span>
+              <span class="text-body">≥ <span id="flt-betten-val">0</span></span>
+            </label>
+            <input type="range" class="form-range" id="flt-betten" min="0" max="3000" step="50" value="0">
           </div>
-        </div>
 
-        <!-- Bundesland -->
-        <div class="mb-3">
-          <label for="flt-bundesland" class="form-label fw-semibold mb-2">Bundesland</label>
-          <select class="form-select form-select-sm" id="flt-bundesland">
-            <option value="">Alle</option>
-          </select>
+          <details class="mb-3">
+            <summary class="small text-uppercase text-body-secondary fw-semibold">Erweiterte Filter</summary>
+            <div class="pt-2">
+              <label class="form-label fw-semibold mb-1 small">Versorgung</label>
+              <div class="row g-1 mb-3" id="flag-checks">
+                <div class="col-6"><div class="form-check form-check-sm"><input class="form-check-input" type="checkbox" id="flg-its" data-flag="hat_intensivmedizin"><label class="form-check-label small" for="flg-its">Intensivmed.</label></div></div>
+                <div class="col-6"><div class="form-check form-check-sm"><input class="form-check-input" type="checkbox" id="flg-notfall" data-flag="hat_notaufnahme"><label class="form-check-label small" for="flg-notfall">Notaufnahme</label></div></div>
+                <div class="col-6"><div class="form-check form-check-sm"><input class="form-check-input" type="checkbox" id="flg-bg" data-flag="hat_bg_zulassung"><label class="form-check-label small" for="flg-bg">BG-Zulassung</label></div></div>
+                <div class="col-6"><div class="form-check form-check-sm"><input class="form-check-input" type="checkbox" id="flg-radio" data-flag="hat_radiologie"><label class="form-check-label small" for="flg-radio">Radiologie</label></div></div>
+                <div class="col-6"><div class="form-check form-check-sm"><input class="form-check-input" type="checkbox" id="flg-onko" data-flag="hat_onkologie"><label class="form-check-label small" for="flg-onko">Onkologie</label></div></div>
+                <div class="col-6"><div class="form-check form-check-sm"><input class="form-check-input" type="checkbox" id="flg-psych" data-flag="hat_psychiatrie"><label class="form-check-label small" for="flg-psych">Psychiatrie</label></div></div>
+                <div class="col-6"><div class="form-check form-check-sm"><input class="form-check-input" type="checkbox" id="flg-geri" data-flag="hat_geriatrie"><label class="form-check-label small" for="flg-geri">Geriatrie</label></div></div>
+                <div class="col-6"><div class="form-check form-check-sm"><input class="form-check-input" type="checkbox" id="flg-dial" data-flag="hat_dialyse"><label class="form-check-label small" for="flg-dial">Dialyse</label></div></div>
+              </div>
+              <div class="form-check form-check-sm mb-2">
+                <input class="form-check-input" type="checkbox" id="flt-uni">
+                <label class="form-check-label small" for="flt-uni">Nur Uni-/Lehrkrankenhäuser</label>
+              </div>
+              <div class="mb-2">
+                <select class="form-select form-select-sm" id="flt-bundesland">
+                  <option value="">Alle Bundesländer</option>
+                </select>
+              </div>
+              <div class="mb-2">
+                <select class="form-select form-select-sm" id="flt-traeger">
+                  <option value="">Alle Trägerarten</option>
+                </select>
+              </div>
+              <input type="text" class="form-control form-control-sm" id="flt-search" placeholder="Suche Name/Ort …">
+            </div>
+          </details>
         </div>
+      </div>
 
-        <!-- Trägerart -->
-        <div class="mb-3">
-          <label for="flt-traeger" class="form-label fw-semibold mb-2">Trägerart</label>
-          <select class="form-select form-select-sm" id="flt-traeger">
-            <option value="">Alle</option>
-          </select>
+      <!-- Dispatch-Card -->
+      <div class="card shadow-sm mb-3 border-danger-subtle">
+        <div class="card-header bg-danger text-white">
+          <h2 class="h6 mb-0"><i class="bi bi-send-fill"></i> Dispatch-Workflow</h2>
         </div>
+        <div class="card-body">
 
-        <!-- Suche -->
-        <div class="mb-3">
-          <label for="flt-search" class="form-label fw-semibold mb-2">Suche</label>
-          <input type="text" class="form-control form-control-sm" id="flt-search" placeholder="Name oder Ort …">
+          <!-- Schritt 1: Belegung -->
+          <div class="workflow-step">
+            <div class="step-num">1</div>
+            <div class="flex-grow-1">
+              <div class="fw-semibold small mb-1">Status quo der Bettenbelegung simulieren</div>
+              <div class="small text-body-secondary mb-2">Wie voll sind die Kliniken, bevor der MANV-Fall eintritt?</div>
+              <div class="d-flex align-items-center gap-2">
+                <input type="range" class="form-range flex-grow-1" id="sim-occupancy" min="0" max="100" step="5" value="60">
+                <span class="badge bg-body-tertiary text-body-emphasis" style="min-width:3.4em">
+                  <span id="sim-occupancy-val">60</span>%
+                </span>
+              </div>
+              <div class="d-flex gap-1 mt-2">
+                <button type="button" class="btn btn-outline-danger btn-sm flex-fill" id="btn-sim-apply">
+                  <i class="bi bi-play-fill"></i> Anwenden
+                </button>
+                <button type="button" class="btn btn-outline-secondary btn-sm" id="btn-sim-reset" title="Reset">
+                  <i class="bi bi-arrow-counterclockwise"></i>
+                </button>
+              </div>
+              <div id="sim-totals" class="form-text small mt-1"></div>
+            </div>
+          </div>
+
+          <hr class="my-3">
+
+          <!-- Schritt 2: Upload -->
+          <div class="workflow-step">
+            <div class="step-num">2</div>
+            <div class="flex-grow-1">
+              <div class="fw-semibold small mb-1">Patientenliste hochladen</div>
+              <div id="dropzone" class="dropzone rounded-3 p-3 text-center">
+                <i class="bi bi-cloud-upload-fill d-block"></i>
+                <div class="small">XLSX hierher ziehen<br><span class="text-body-secondary">oder klicken</span></div>
+                <input type="file" id="file-input" accept=".xlsx" class="d-none">
+              </div>
+              <div id="dropzone-status" class="form-text small"></div>
+            </div>
+          </div>
+
+          <!-- Schritt 3: Verteilen -->
+          <div id="batch-panel" class="workflow-step d-none">
+            <div class="step-num step-active">3</div>
+            <div class="flex-grow-1">
+              <div class="fw-semibold small mb-1">Verteilung starten</div>
+              <div class="batch-info-box">
+                <div class="fw-semibold small text-truncate" id="batch-filename">—</div>
+                <div class="small text-body-secondary" id="batch-summary">—</div>
+              </div>
+              <div class="d-flex gap-1 mt-2">
+                <button type="button" class="btn btn-danger btn-sm flex-fill" id="btn-dispatch">
+                  <i class="bi bi-send-check"></i> Verteilen
+                </button>
+                <button type="button" class="btn btn-outline-secondary btn-sm" id="btn-batch-reset" title="Zuweisung reset">
+                  <i class="bi bi-arrow-counterclockwise"></i>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div id="dispatch-result" class="mt-3 small"></div>
         </div>
-
-        <button type="button" class="btn btn-outline-secondary btn-sm w-100" id="btn-reset">
-          <i class="bi bi-arrow-counterclockwise me-1"></i> Filter zurücksetzen
-        </button>
       </div>
     </aside>
 
-    <!-- Main: Map + List -->
-    <main class="col-lg-9 col-xl-9">
-      <div id="map" class="dashboard-map"></div>
-
-      <div class="p-3 bg-body">
-        <div class="d-flex justify-content-between align-items-center mb-2">
-          <h2 class="h6 text-uppercase text-body-secondary mb-0">
-            <i class="bi bi-list-ul me-1"></i> Kliniken (sortiert nach Entfernung zum Hub)
-          </h2>
-          <span class="small text-body-secondary">Max 50 Einträge</span>
-        </div>
-        <div class="table-responsive">
-          <table class="table table-sm table-hover mb-0 align-middle small" id="klinik-table">
-            <thead class="table-light">
-              <tr>
-                <th>SK</th>
-                <th>Klinik</th>
-                <th>Ort</th>
-                <th class="text-end">Entf. (km)</th>
-                <th class="text-end">Betten</th>
-                <th>Versorgung</th>
-              </tr>
-            </thead>
-            <tbody></tbody>
-          </table>
+    <!-- Rechts: Karte + Tabellen -->
+    <section class="col-xl-9 col-lg-8">
+      <div class="card shadow-sm mb-3">
+        <div class="card-body p-0">
+          <div id="map" class="dashboard-map rounded-3"></div>
         </div>
       </div>
-    </main>
+
+      <div class="card shadow-sm">
+        <div class="card-header bg-body p-0">
+          <ul class="nav nav-tabs border-0" id="bottom-tabs" role="tablist">
+            <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-kliniken" type="button">
+              <i class="bi bi-list-ul"></i> Kliniken in Reichweite
+            </button></li>
+            <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-transporte" type="button">
+              <i class="bi bi-truck"></i> Transportaufträge
+              <span class="badge bg-danger ms-1" id="tab-transport-count">0</span>
+            </button></li>
+          </ul>
+        </div>
+        <div class="card-body tab-content p-3">
+          <div class="tab-pane fade show active" id="tab-kliniken" role="tabpanel">
+            <div class="small text-body-secondary mb-2">Sortiert nach Entfernung zum Hub · Top 50 gefiltert</div>
+            <div class="table-responsive">
+              <table class="table table-sm table-hover mb-0 align-middle small" id="klinik-table">
+                <thead class="table-light">
+                  <tr>
+                    <th>SK</th>
+                    <th>Klinik</th>
+                    <th>Ort</th>
+                    <th class="text-end">Entf. (km)</th>
+                    <th class="text-end">Betten</th>
+                    <th>Versorgung</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+          <div class="tab-pane fade" id="tab-transporte" role="tabpanel">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <span class="small text-body-secondary">SK-Priorität dann Entfernung</span>
+              <button class="btn btn-sm btn-outline-secondary" id="btn-toggle-routes">
+                <i class="bi bi-bezier2"></i> Routen auf Karte
+              </button>
+            </div>
+            <div class="table-responsive">
+              <table class="table table-sm table-hover mb-0 align-middle small" id="transport-table">
+                <thead class="table-light">
+                  <tr>
+                    <th>SK</th>
+                    <th>Patient</th>
+                    <th>Klinik</th>
+                    <th>Ort</th>
+                    <th class="text-end">km</th>
+                    <th class="text-end">min</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
 
   </div>
 </div>

@@ -18,6 +18,21 @@ def simulator_page() -> str:
     return render_template("simulator.html")
 
 
+@main_bp.get("/batches")
+def batches_page() -> str:
+    return render_template("batches.html")
+
+
+@main_bp.get("/patients")
+def patients_page() -> str:
+    return render_template("patients.html")
+
+
+@main_bp.get("/info")
+def info_page() -> str:
+    return render_template("info.html")
+
+
 @main_bp.post("/simulator/generate")
 def simulator_generate():
     payload = request.get_json(silent=True) or {}

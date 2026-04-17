@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+
+{% block title %}Verläufe · MANV-Dispatch{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+  <div class="d-flex justify-content-between align-items-start mb-3">
+    <div>
+      <h1 class="h3 mb-1"><i class="bi bi-folder2-open text-danger"></i> Verläufe</h1>
+      <p class="text-body-secondary mb-0">Bisher hochgeladene Patientenlisten und deren Verteilungen.</p>
+    </div>
+    <a href="/" class="btn btn-outline-danger">
+      <i class="bi bi-arrow-left"></i> Zurück zum Dashboard
+    </a>
+  </div>
+
+  <div class="card shadow-sm">
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-hover mb-0 align-middle" id="batches-table">
+          <thead class="table-light">
+            <tr>
+              <th>#</th>
+              <th>Datei</th>
+              <th>Hub</th>
+              <th class="text-end">Patienten</th>
+              <th class="text-end">SK1 / SK2 / SK3</th>
+              <th>Status</th>
+              <th>Upload</th>
+              <th>Verteilt</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td colspan="9" class="text-center text-body-secondary py-4">
+              <span class="spinner-border spinner-border-sm me-2"></span> Lade …
+            </td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(async function () {
+  function fmtDt(s) { return s ? new Date(s).toLocaleString("de-DE") : "—"; }
+  function esc(s) { return (s ?? "").toString().replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"})[c]); }
+
+  async function load() {
+    const resp = await fetch("/api/batches");
+    const batches = await resp.json();
+    const tbody = document.querySelector("#batches-table tbody");
+    if (!batches.length) {
+      tbody.innerHTML = `<tr><td colspan="9" class="text-center text-body-secondary py-4">
+        Noch keine Uploads. <a href="/">Hier starten</a>.</td></tr>`;
+      return;
+    }
+    tbody.innerHTML = batches.map(b => {
+      const statusBadge = b.status === "dispatched"
+        ? `<span class="badge bg-success">verteilt</span>`
+        : `<span class="badge bg-warning text-dark">wartet</span>`;
+      return `
+        <tr data-id="${b.id}">
+          <td class="text-body-secondary">#${b.id}</td>
+          <td><i class="bi bi-file-earmark-excel text-success"></i> ${esc(b.filename)}</td>
+          <td>${esc(b.hub_name)}</td>
+          <td class="text-end fw-semibold">${b.total}</td>
+          <td class="text-end small">
+            <span class="badge sk-badge sk1">${b.sk1}</span>
+            <span class="badge sk-badge sk2">${b.sk2}</span>
+            <span class="badge sk-badge sk3">${b.sk3}</span>
+          </td>
+          <td>${statusBadge}</td>
+          <td class="small text-body-secondary">${fmtDt(b.uploaded_at)}</td>
+          <td class="small text-body-secondary">${fmtDt(b.dispatched_at)}</td>
+          <td class="text-end">
+            <button class="btn btn-sm btn-outline-danger" data-action="delete" data-id="${b.id}" title="Löschen">
+              <i class="bi bi-trash"></i>
+            </button>
+          </td>
+        </tr>`;
+    }).join("");
+    tbody.querySelectorAll('button[data-action="delete"]').forEach(b => {
+      b.addEventListener("click", async e => {
+        e.stopPropagation();
+        const id = e.currentTarget.dataset.id;
+        if (!confirm(`Batch #${id} inklusive Transporten löschen?`)) return;
+        await fetch(`/api/batches/${id}`, { method: "DELETE" });
+        load();
+      });
+    });
+  }
+  load();
+})();
+</script>
+{% endblock %}

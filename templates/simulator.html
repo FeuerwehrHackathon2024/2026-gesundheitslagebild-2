@@ -75,12 +75,15 @@
           <div id="sim-summary" class="text-body-secondary">
             Gesamt: <strong id="sim-total">250</strong> Patienten über <strong id="sim-days-out">3</strong> Tage
           </div>
-          <div class="d-flex gap-2">
+          <div class="d-flex gap-2 flex-wrap">
             <button type="button" class="btn btn-outline-secondary" id="btn-preset-250">
               Preset: 250 / Tag
             </button>
-            <button type="submit" class="btn btn-danger">
+            <button type="submit" class="btn btn-outline-danger">
               <i class="bi bi-file-earmark-excel-fill"></i> XLSX generieren
+            </button>
+            <button type="button" class="btn btn-danger" id="btn-run-direct">
+              <i class="bi bi-lightning-charge-fill"></i> Direkt laden + verteilen
             </button>
           </div>
         </div>
@@ -128,6 +131,57 @@
       o.textContent = `${h.name} (${h.ort || ""})`;
       sel.appendChild(o);
     });
+  });
+
+  function collectBody() {
+    return {
+      sk1: Number(document.getElementById("sim-sk1").value) || 0,
+      sk2: Number(document.getElementById("sim-sk2").value) || 0,
+      sk3: Number(document.getElementById("sim-sk3").value) || 0,
+      start_date: document.getElementById("sim-start").value,
+      days: Number(document.getElementById("sim-days").value) || 1,
+      hub_name: document.getElementById("sim-hub").value,
+      start_hour: Number(document.getElementById("sim-start-hour").value),
+      end_hour: Number(document.getElementById("sim-end-hour").value),
+      seed: document.getElementById("sim-seed").value ? Number(document.getElementById("sim-seed").value) : null,
+    };
+  }
+
+  document.getElementById("btn-run-direct").addEventListener("click", async () => {
+    const btn = document.getElementById("btn-run-direct");
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Lade…';
+    try {
+      const body = collectBody();
+      if (body.sk1 + body.sk2 + body.sk3 === 0) throw new Error("Mindestens ein SK-Wert > 0");
+      if (!body.start_date) throw new Error("Start-Datum fehlt");
+      // Direkt Batch erzeugen
+      const r1 = await fetch("/batch/from-simulator", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      }).then(async r => {
+        // Legacy-Path: falls Route unter /api liegt
+        if (r.status === 404) return fetch("/api/batch/from-simulator", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        return r;
+      });
+      const j1 = await r1.json();
+      if (!r1.ok) throw new Error(j1.error || "Erstellung fehlgeschlagen");
+      // Direkt verteilen
+      const r2 = await fetch(`/api/batch/${j1.batch_id}/dispatch`, { method: "POST" });
+      const j2 = await r2.json();
+      if (!r2.ok) throw new Error(j2.error || "Dispatch fehlgeschlagen");
+      alert(`Batch #${j1.batch_id} erstellt & verteilt:\n• ${j2.assigned} zugewiesen\n• ${j2.unassigned} offen\n• Ø ${j2.avg_distanz_km || "–"} km`);
+      location.href = "/patients";
+    } catch (err) {
+      alert("Fehler: " + err.message);
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="bi bi-lightning-charge-fill"></i> Direkt laden + verteilen';
+    }
   });
 
   document.getElementById("sim-form").addEventListener("submit", async (e) => {

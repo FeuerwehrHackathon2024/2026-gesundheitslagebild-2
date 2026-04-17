@@ -14,6 +14,10 @@
     hubMarker: null,
     hubRadiusCircle: null,
     markerById: new Map(),
+    transports: [],
+    batch: null,
+    routesLayer: null,
+    showRoutes: false,
     filters: {
       sk: { 1: true, 2: true, 3: true },
       radiusKm: 100,
@@ -115,14 +119,21 @@
   function makeMarker(k) {
     const sk = skClass(k.sk_max);
     const label = (k.sk_max || "").replace("SK", "") || "–";
+    const cls = k.ausgeschlossen ? "kh-pin excluded" : `kh-pin ${sk}`;
     const icon = L.divIcon({
       className: "",
-      html: `<div class="kh-pin ${sk}">${label}</div>`,
+      html: `<div class="${cls}">${k.ausgeschlossen ? "✕" : label}</div>`,
       iconSize: [22, 22],
       iconAnchor: [11, 11],
     });
     const marker = L.marker([k.lat, k.lon], { icon });
     marker.bindPopup(() => popupHtml(k), { maxWidth: 340 });
+    marker.on("popupopen", e => {
+      const btn = e.popup.getElement().querySelector("button[data-kh-id]");
+      if (btn) {
+        btn.addEventListener("click", () => toggleExclude(Number(btn.dataset.khId)));
+      }
+    });
     marker._kh = k;
     return marker;
   }
@@ -146,10 +157,25 @@
     const addr = [k.strasse, k.hausnummer].filter(Boolean).join(" ");
     const place = [k.plz, k.ort].filter(Boolean).join(" ");
 
+    const excludeBtn = k.ausgeschlossen
+      ? `<button class="btn btn-sm btn-success w-100" data-action="include" data-kh-id="${k.id}">
+           <i class="bi bi-check-circle-fill"></i> Wieder aktivieren
+         </button>`
+      : `<button class="btn btn-sm btn-outline-danger w-100" data-action="exclude" data-kh-id="${k.id}">
+           <i class="bi bi-x-circle-fill"></i> Ausschließen (defekt/nicht erreichbar)
+         </button>`;
+
+    const excludedBanner = k.ausgeschlossen
+      ? `<div class="alert alert-danger py-1 px-2 small mb-2 mt-2">
+           <i class="bi bi-exclamation-octagon-fill"></i> Ausgeschlossen
+           ${k.ausschluss_grund ? `— ${escapeHtml(k.ausschluss_grund)}` : ""}
+         </div>` : "";
+
     return `
       <div class="kh-popup">
         <h6>${escapeHtml(k.name)}</h6>
         <div class="popup-meta">${escapeHtml(addr)}${addr && place ? ", " : ""}${escapeHtml(place)}</div>
+        ${excludedBanner}
         <div class="mt-1 d-flex align-items-center gap-2">
           <span class="badge sk-badge ${skCls}">${escapeHtml(skMax)}</span>
           <span class="popup-meta">
@@ -160,7 +186,34 @@
         ${flags.length ? `<div class="popup-flags">${flags.join("")}</div>` : ""}
         ${k.telefon ? `<div class="popup-meta mt-2"><i class="bi bi-telephone"></i> ${escapeHtml(k.telefon)}</div>` : ""}
         ${k.website ? `<div class="popup-meta"><i class="bi bi-globe"></i> <a href="${escapeHtml(k.website)}" target="_blank" rel="noopener">${escapeHtml(k.website)}</a></div>` : ""}
+        <div class="mt-2">${excludeBtn}</div>
       </div>`;
+  }
+
+  async function toggleExclude(khId) {
+    const grund = prompt("Grund für den Ausschluss (z.B. 'Stromausfall', 'nicht erreichbar'):", "nicht erreichbar");
+    if (grund === null) return;  // user cancelled
+    const resp = await fetch(`/api/krankenhaus/${khId}/toggle-exclude`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ grund: grund || "manuell ausgeschlossen" }),
+    });
+    const j = await resp.json();
+    // State in geladenem Array updaten
+    const kh = state.kliniken.find(k => k.id === khId);
+    if (kh) {
+      kh.ausgeschlossen = j.ausgeschlossen;
+      kh.ausschluss_grund = j.ausschluss_grund;
+    }
+    // Marker neu rendern für die Klinik
+    const oldMarker = state.markerById.get(khId);
+    if (oldMarker && kh) {
+      state.cluster.removeLayer(oldMarker);
+      const newMarker = makeMarker(kh);
+      state.markerById.set(khId, newMarker);
+      state.cluster.addLayer(newMarker);
+      setTimeout(() => newMarker.openPopup(), 100);
+    }
   }
 
   function buildAllMarkers() {
@@ -173,6 +226,7 @@
       markers.push(m);
     }
     state.cluster.addLayers(markers);
+    renderKPIs();
   }
 
   // ---- filtering ----
@@ -390,6 +444,249 @@
     });
   }
 
+  // ================= Dispatch / Simulation =================
+
+  function wireDispatch() {
+    const occSlider = document.getElementById("sim-occupancy");
+    const occVal = document.getElementById("sim-occupancy-val");
+    occSlider.addEventListener("input", e => { occVal.textContent = e.target.value; });
+
+    document.getElementById("btn-sim-apply").addEventListener("click", async () => {
+      const percent = Number(occSlider.value);
+      setDispatchResult(`<span class="text-body-secondary">Setze Grundbelegung ${percent} %…</span>`);
+      const resp = await fetch("/api/simulation/occupancy", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ percent }),
+      });
+      const j = await resp.json();
+      renderBelegungTotals(j);
+      setDispatchResult(`<span class="text-success"><i class="bi bi-check-circle"></i> Grundbelegung ${percent} % auf ${j.updated} Kliniken gesetzt.</span>`);
+    });
+
+    document.getElementById("btn-sim-reset").addEventListener("click", async () => {
+      const resp = await fetch("/api/simulation/reset", { method: "POST" });
+      const j = await resp.json();
+      renderBelegungTotals(j);
+      setDispatchResult(`<span class="text-body-secondary">Belegung zurückgesetzt (${j.cleared} Kliniken).</span>`);
+    });
+
+    // Dropzone
+    const dz = document.getElementById("dropzone");
+    const fi = document.getElementById("file-input");
+    dz.addEventListener("click", () => fi.click());
+    dz.addEventListener("dragover", e => { e.preventDefault(); dz.classList.add("dz-active"); });
+    dz.addEventListener("dragleave", () => dz.classList.remove("dz-active"));
+    dz.addEventListener("drop", e => {
+      e.preventDefault(); dz.classList.remove("dz-active");
+      if (e.dataTransfer.files.length) handleUpload(e.dataTransfer.files[0]);
+    });
+    fi.addEventListener("change", e => {
+      if (e.target.files.length) handleUpload(e.target.files[0]);
+    });
+
+    document.getElementById("btn-dispatch").addEventListener("click", handleDispatch);
+    document.getElementById("btn-batch-reset").addEventListener("click", handleBatchReset);
+    document.getElementById("btn-toggle-routes").addEventListener("click", toggleRoutes);
+
+    // Initial totals
+    fetch("/api/simulation/status").then(r => r.json()).then(renderBelegungTotals);
+  }
+
+  function renderBelegungTotals(t) {
+    if (!t || !t.kapazitaet) return;
+    const el = document.getElementById("sim-totals");
+    const c = t.kapazitaet, b = t.belegung, f = t.frei;
+    if (el) {
+      el.innerHTML = `
+        <div>Frei: <strong>${(f.sk1 || 0).toLocaleString("de-DE")}</strong> SK1 ·
+                    <strong>${(f.sk2 || 0).toLocaleString("de-DE")}</strong> SK2 ·
+                    <strong>${(f.sk3 || 0).toLocaleString("de-DE")}</strong> SK3</div>
+        <div class="text-body-secondary">Belegt/Gesamt:
+          ${(b.sk1 || 0)}/${(c.sk1 || 0)} ·
+          ${(b.sk2 || 0)}/${(c.sk2 || 0)} ·
+          ${(b.sk3 || 0)}/${(c.sk3 || 0)}
+        </div>`;
+    }
+    // KPI-Card "Freie Betten"
+    const kpiFrei = document.getElementById("kpi-frei");
+    if (kpiFrei) {
+      const totalFrei = (f.sk1 || 0) + (f.sk2 || 0) + (f.sk3 || 0);
+      kpiFrei.textContent = totalFrei.toLocaleString("de-DE");
+    }
+  }
+
+  function renderKPIs() {
+    // Kliniken-KPI
+    const el = document.getElementById("kpi-kliniken");
+    if (el) {
+      const sk1 = state.kliniken.filter(k => k.kann_sk1).length;
+      const sk2 = state.kliniken.filter(k => k.kann_sk2).length;
+      const sk3 = state.kliniken.filter(k => k.kann_sk3).length;
+      el.textContent = state.kliniken.length.toLocaleString("de-DE");
+      document.getElementById("kpi-sk1").textContent = sk1;
+      document.getElementById("kpi-sk2").textContent = sk2;
+      document.getElementById("kpi-sk3").textContent = sk3;
+    }
+  }
+
+  function renderBatchKPI(batch, transports) {
+    const t = document.getElementById("kpi-transports");
+    if (t) t.textContent = (transports?.length || 0).toLocaleString("de-DE");
+    const sub = document.getElementById("kpi-transport-sub");
+    if (sub) sub.textContent = transports?.length ? "geplant · SK1→SK2→SK3" : "noch keine";
+
+    const bt = document.getElementById("kpi-batch-total");
+    const bs = document.getElementById("kpi-batch-sub");
+    if (batch && bt && bs) {
+      bt.textContent = batch.total;
+      bs.innerHTML = `SK1: ${batch.sk1} · SK2: ${batch.sk2} · SK3: ${batch.sk3}`;
+    }
+  }
+
+  function setDispatchResult(html) {
+    document.getElementById("dispatch-result").innerHTML = html;
+  }
+
+  async function handleUpload(file) {
+    const dzStatus = document.getElementById("dropzone-status");
+    dzStatus.innerHTML = `<span class="text-body-secondary"><i class="bi bi-hourglass-split"></i> Lade ${file.name}…</span>`;
+    const form = new FormData();
+    form.append("file", file);
+    form.append("hub", state.hub?.name || "Hub Süd");
+    try {
+      const resp = await fetch("/api/batch/upload", { method: "POST", body: form });
+      const j = await resp.json();
+      if (!resp.ok) throw new Error(j.error || "Upload fehlgeschlagen");
+      state.batch = j;
+      dzStatus.innerHTML = `<span class="text-success"><i class="bi bi-check-circle"></i> ${j.total} Patienten geladen</span>`;
+      showBatchPanel(j);
+    } catch (err) {
+      dzStatus.innerHTML = `<span class="text-danger">${escapeHtml(err.message)}</span>`;
+    }
+  }
+
+  function showBatchPanel(b) {
+    document.getElementById("batch-panel").classList.remove("d-none");
+    document.getElementById("batch-filename").textContent = b.filename || "Upload";
+    document.getElementById("batch-summary").innerHTML =
+      `${b.total} Patienten — <span class="text-danger">SK1: ${b.sk1}</span> · ` +
+      `<span style="color:#f57c00">SK2: ${b.sk2}</span> · SK3: ${b.sk3} · Hub: ${escapeHtml(b.hub || "")}`;
+    renderBatchKPI(b, state.transports);
+  }
+
+  async function handleDispatch() {
+    if (!state.batch) return;
+    const btn = document.getElementById("btn-dispatch");
+    btn.disabled = true;
+    btn.innerHTML = `<span class="spinner-border spinner-border-sm"></span> Verteile…`;
+    try {
+      const resp = await fetch(`/api/batch/${state.batch.batch_id}/dispatch`, { method: "POST" });
+      const j = await resp.json();
+      if (!resp.ok) throw new Error(j.error || "Dispatch fehlgeschlagen");
+      setDispatchResult(`
+        <div class="alert alert-success py-2 small mb-0">
+          <i class="bi bi-check-circle-fill"></i> Verteilung abgeschlossen<br>
+          <strong>${j.assigned}</strong> zugewiesen · <strong>${j.unassigned}</strong> offen<br>
+          Ø Entfernung: <strong>${j.avg_distanz_km || "–"} km</strong>
+        </div>`);
+      await loadTransports();
+      fetch("/api/simulation/status").then(r => r.json()).then(renderBelegungTotals);
+      // Tab auf Transporte
+      new bootstrap.Tab(document.querySelector('[data-bs-target="#tab-transporte"]')).show();
+    } catch (err) {
+      setDispatchResult(`<div class="alert alert-danger py-2 small mb-0">${escapeHtml(err.message)}</div>`);
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = `<i class="bi bi-send-check"></i> Verteilen`;
+    }
+  }
+
+  async function handleBatchReset() {
+    if (!state.batch) return;
+    await fetch(`/api/batch/${state.batch.batch_id}/reset`, { method: "POST" });
+    state.transports = [];
+    renderTransportTable();
+    clearRoutes();
+    fetch("/api/simulation/status").then(r => r.json()).then(renderBelegungTotals);
+    setDispatchResult(`<span class="text-body-secondary">Zuweisung zurückgesetzt.</span>`);
+  }
+
+  async function loadTransports() {
+    if (!state.batch) return;
+    const resp = await fetch(`/api/transports?batch_id=${state.batch.batch_id}`);
+    state.transports = await resp.json();
+    renderTransportTable();
+    renderBatchKPI(state.batch, state.transports);
+    if (state.showRoutes) renderRoutes();
+  }
+
+  function renderTransportTable() {
+    const tbody = document.querySelector("#transport-table tbody");
+    document.getElementById("tab-transport-count").textContent = state.transports.length;
+    if (!state.transports.length) {
+      tbody.innerHTML = `<tr><td colspan="7" class="text-center text-body-secondary py-3">Noch keine Transportaufträge</td></tr>`;
+      return;
+    }
+    tbody.innerHTML = state.transports.map(t => {
+      const skCls = "sk" + (t.sk || "").replace("SK", "");
+      return `
+        <tr data-kh="${t.ziel.id}">
+          <td><span class="badge sk-badge ${skCls}">${escapeHtml(t.sk || "")}</span></td>
+          <td><span class="font-monospace small">${escapeHtml(t.patient_external_id || ("#" + t.patient_id))}</span></td>
+          <td class="text-truncate" style="max-width: 240px;" title="${escapeHtml(t.ziel.name || "")}">${escapeHtml(t.ziel.name || "")}</td>
+          <td>${escapeHtml(t.ziel.ort || "")}</td>
+          <td class="text-end">${t.distanz_km ? t.distanz_km.toFixed(1) : "–"}</td>
+          <td class="text-end">${t.dauer_min ? Math.round(t.dauer_min) : "–"}</td>
+          <td><span class="badge bg-secondary">${escapeHtml(t.status || "")}</span></td>
+        </tr>`;
+    }).join("");
+
+    tbody.querySelectorAll("tr[data-kh]").forEach(tr => {
+      tr.addEventListener("click", () => {
+        const id = Number(tr.dataset.kh);
+        const m = state.markerById.get(id);
+        if (m) {
+          state.map.setView(m.getLatLng(), 12, { animate: true });
+          m.openPopup();
+        }
+      });
+    });
+  }
+
+  function toggleRoutes() {
+    state.showRoutes = !state.showRoutes;
+    const btn = document.getElementById("btn-toggle-routes");
+    if (state.showRoutes) {
+      renderRoutes();
+      btn.classList.add("active");
+    } else {
+      clearRoutes();
+      btn.classList.remove("active");
+    }
+  }
+
+  function renderRoutes() {
+    clearRoutes();
+    if (!state.transports.length) return;
+    const layer = L.layerGroup().addTo(state.map);
+    for (const t of state.transports) {
+      if (!t.hub.lat || !t.ziel.lat) continue;
+      const color = t.sk === "SK1" ? "#b71c1c" : t.sk === "SK2" ? "#f57c00" : "#fbc02d";
+      L.polyline([[t.hub.lat, t.hub.lon], [t.ziel.lat, t.ziel.lon]], {
+        color, weight: 2, opacity: 0.55, dashArray: "4,4",
+      }).addTo(layer);
+    }
+    state.routesLayer = layer;
+  }
+
+  function clearRoutes() {
+    if (state.routesLayer) {
+      state.map.removeLayer(state.routesLayer);
+      state.routesLayer = null;
+    }
+  }
+
   // ---- init ----
   async function init() {
     try {
@@ -401,6 +698,7 @@
       initMap();
       buildAllMarkers();
       wireFilters(opts);
+      wireDispatch();
       applyFilters();
     } catch (err) {
       console.error("Dashboard init failed:", err);

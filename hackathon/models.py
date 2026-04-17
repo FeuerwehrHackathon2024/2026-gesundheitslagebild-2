@@ -82,6 +82,9 @@ class Krankenhaus(db.Model):
     kapazitaet_sk2_geschaetzt = db.Column(db.Integer, nullable=True)
     kapazitaet_sk3_geschaetzt = db.Column(db.Integer, nullable=True)
     sk_begruendung = db.Column(db.Text, nullable=True)
+    # Vom User ausgeschlossen (defekt/nicht erreichbar) — wird im Dispatch ignoriert
+    ausgeschlossen = db.Column(db.Boolean, default=False, nullable=False)
+    ausschluss_grund = db.Column(db.Text, nullable=True)
 
 
 # Backward-compatible alias for previous model name.
@@ -112,6 +115,100 @@ class Hub(db.Model):
             "kapazitaet_pro_tag": self.kapazitaet_pro_tag,
             "beschreibung": self.beschreibung,
         }
+
+
+class PatientenBatch(db.Model):
+    """Ein Upload einer Patientenliste (XLSX)."""
+    __tablename__ = "patienten_batch"
+
+    id = db.Column(db.Integer, primary_key=True)
+    filename = db.Column(db.String(255), nullable=True)
+    hub_id = db.Column(db.Integer, db.ForeignKey("hub.id"), nullable=True)
+    hub_name = db.Column(db.String(128), nullable=True)
+    total = db.Column(db.Integer, default=0)
+    sk1 = db.Column(db.Integer, default=0)
+    sk2 = db.Column(db.Integer, default=0)
+    sk3 = db.Column(db.Integer, default=0)
+    status = db.Column(db.String(32), default="uploaded")  # uploaded | dispatched
+    uploaded_at = db.Column(db.DateTime, default=datetime.utcnow)
+    dispatched_at = db.Column(db.DateTime, nullable=True)
+    patients = db.relationship("Patient", backref="batch", lazy="dynamic",
+                               cascade="all, delete-orphan")
+
+
+class Patient(db.Model):
+    __tablename__ = "patient"
+    __table_args__ = (
+        db.Index("ix_patient_batch_status", "batch_id", "status"),
+        db.Index("ix_patient_sk", "sk"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    batch_id = db.Column(db.Integer, db.ForeignKey("patienten_batch.id"), nullable=False)
+    external_id = db.Column(db.String(64), nullable=True)
+    sk = db.Column(db.String(8), nullable=False)  # SK1 / SK2 / SK3
+    datum = db.Column(db.Date, nullable=True)
+    eingangssichtung = db.Column(db.DateTime, nullable=True)
+    transportbereit = db.Column(db.DateTime, nullable=True)
+    quelle = db.Column(db.String(128), nullable=True)
+    assigned_krankenhaus_id = db.Column(db.Integer, db.ForeignKey("krankenhaus.id"), nullable=True)
+    assigned_at = db.Column(db.DateTime, nullable=True)
+    aufenthaltsdauer_tage = db.Column(db.Integer, nullable=True)
+    distanz_km = db.Column(db.Float, nullable=True)
+    status = db.Column(db.String(32), default="pending")  # pending | assigned | unassigned
+    note = db.Column(db.Text, nullable=True)
+
+    assigned_krankenhaus = db.relationship("Krankenhaus")
+
+
+class KrankenhausBelegung(db.Model):
+    """Aktuelle/simulierte Bettenbelegung pro Klinik + SK-Stufe."""
+    __tablename__ = "krankenhaus_belegung"
+
+    krankenhaus_id = db.Column(db.Integer, db.ForeignKey("krankenhaus.id"), primary_key=True)
+    kapazitaet_sk1 = db.Column(db.Integer, default=0)
+    kapazitaet_sk2 = db.Column(db.Integer, default=0)
+    kapazitaet_sk3 = db.Column(db.Integer, default=0)
+    belegung_sk1 = db.Column(db.Integer, default=0)
+    belegung_sk2 = db.Column(db.Integer, default=0)
+    belegung_sk3 = db.Column(db.Integer, default=0)
+    vorbelegung_prozent = db.Column(db.Integer, default=0)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    krankenhaus = db.relationship("Krankenhaus", backref=db.backref("belegung", uselist=False))
+
+    def frei(self, sk: str) -> int:
+        cap = getattr(self, f"kapazitaet_{sk.lower()}")
+        bel = getattr(self, f"belegung_{sk.lower()}")
+        return max(cap - bel, 0)
+
+
+class TransportAuftrag(db.Model):
+    __tablename__ = "transport_auftrag"
+    __table_args__ = (
+        db.Index("ix_transport_patient", "patient_id"),
+        db.Index("ix_transport_created", "erzeugt_am"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    patient_id = db.Column(db.Integer, db.ForeignKey("patient.id"), nullable=False)
+    batch_id = db.Column(db.Integer, db.ForeignKey("patienten_batch.id"), nullable=True)
+    hub_id = db.Column(db.Integer, db.ForeignKey("hub.id"), nullable=True)
+    hub_lat = db.Column(db.Float, nullable=True)
+    hub_lon = db.Column(db.Float, nullable=True)
+    krankenhaus_id = db.Column(db.Integer, db.ForeignKey("krankenhaus.id"), nullable=False)
+    ziel_lat = db.Column(db.Float, nullable=True)
+    ziel_lon = db.Column(db.Float, nullable=True)
+    sk = db.Column(db.String(8), nullable=True)
+    distanz_km = db.Column(db.Float, nullable=True)
+    dauer_min = db.Column(db.Float, nullable=True)
+    route_geojson = db.Column(db.Text, nullable=True)
+    status = db.Column(db.String(32), default="geplant")  # geplant | unterwegs | abgeschlossen
+    erzeugt_am = db.Column(db.DateTime, default=datetime.utcnow)
+
+    patient = db.relationship("Patient")
+    krankenhaus = db.relationship("Krankenhaus")
+    hub = db.relationship("Hub")
 
 
 class User(db.Model):
