@@ -551,6 +551,7 @@ def timecapsule_run():
     dist = payload.get("sk_distribution")
     sk_dist = tuple(dist) if isinstance(dist, list) and len(dist) == 3 else (0.12, 0.28, 0.60)
 
+    bundesland = payload.get("bundesland") or None
     params = CapsuleParams(
         days=max(1, min(int(payload.get("days", 5)), 14)),
         patients_per_day=max(1, min(int(payload.get("patients_per_day", 250)), 2000)),
@@ -558,6 +559,7 @@ def timecapsule_run():
         start_date=start_dt,
         grundbelegung_prozent=max(0, min(int(payload.get("grundbelegung_prozent", 60)), 100)),
         seed=payload.get("seed"),
+        bundesland=bundesland if bundesland else None,
     )
     result = run_capsule(params)
     return jsonify(result)

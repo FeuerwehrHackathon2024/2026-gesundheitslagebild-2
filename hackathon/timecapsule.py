@@ -49,6 +49,7 @@ class CapsuleParams:
     start_date: datetime | None = None
     grundbelegung_prozent: int = 60
     seed: int | None = 42
+    bundesland: str | None = None  # wenn gesetzt: nur Kliniken dieses Landes
 
 
 def _ensure_belegung(kh: Krankenhaus) -> KrankenhausBelegung:
@@ -80,8 +81,19 @@ def _reset_simulation_state():
     db.session.commit()
 
 
-def _set_grundbelegung(prozent: int, rng: random.Random):
-    for row in db.session.query(KrankenhausBelegung).all():
+def _bundesland_kh_ids(bundesland: str | None) -> set[int] | None:
+    if not bundesland:
+        return None
+    ids = {row[0] for row in db.session.query(Krankenhaus.id)
+           .filter(Krankenhaus.bundesland == bundesland).all()}
+    return ids
+
+
+def _set_grundbelegung(prozent: int, rng: random.Random, bundesland_ids: set[int] | None = None):
+    q = db.session.query(KrankenhausBelegung)
+    for row in q.all():
+        if bundesland_ids is not None and row.krankenhaus_id not in bundesland_ids:
+            continue
         row.vorbelegung_prozent = prozent
         for sk in ("sk1", "sk2", "sk3"):
             cap = getattr(row, f"kapazitaet_{sk}") or 0
@@ -91,23 +103,27 @@ def _set_grundbelegung(prozent: int, rng: random.Random):
     db.session.commit()
 
 
-def _pick_target_kh(sk: str, hub: Hub, rng: random.Random) -> tuple[Krankenhaus, KrankenhausBelegung, float] | None:
+def _pick_target_kh(sk: str, hub: Hub, rng: random.Random,
+                    bundesland: str | None = None) -> tuple[Krankenhaus, KrankenhausBelegung, float] | None:
     """Wähle eine Klinik mit freier Kapazität für diese SK-Stufe.
 
     Strategie: nach Distanz zum Hub sortieren, erste mit Kapazität nehmen.
+    Bei bundesland-Filter werden nur Kliniken des Bundeslands betrachtet.
     """
     from .dispatch import SK_KANN_COLS
     from sqlalchemy import or_
 
     ors = [getattr(Krankenhaus, c) == True for c in SK_KANN_COLS[sk]]  # noqa: E712
-    candidates = (
+    q = (
         db.session.query(Krankenhaus, KrankenhausBelegung)
         .join(KrankenhausBelegung, KrankenhausBelegung.krankenhaus_id == Krankenhaus.id)
         .filter(Krankenhaus.lat.isnot(None))
         .filter(Krankenhaus.ausgeschlossen == False)  # noqa: E712
         .filter(or_(*ors))
-        .all()
     )
+    if bundesland:
+        q = q.filter(Krankenhaus.bundesland == bundesland)
+    candidates = q.all()
     ranked = []
     for kh, bel in candidates:
         d = haversine_km(hub.lat, hub.lon, kh.lat, kh.lon)
@@ -133,7 +149,8 @@ def run_capsule(params: CapsuleParams) -> dict:
         return {"error": "Kein Hub in DB"}
 
     _reset_simulation_state()
-    _set_grundbelegung(params.grundbelegung_prozent, rng)
+    bundesland_ids = _bundesland_kh_ids(params.bundesland)
+    _set_grundbelegung(params.grundbelegung_prozent, rng, bundesland_ids)
 
     # Globaler Batch für alle Capsule-Patienten
     batch = PatientenBatch(
@@ -156,6 +173,8 @@ def run_capsule(params: CapsuleParams) -> dict:
     total_patients = 0
     unassigned = 0
     events_a01 = events_a03 = 0
+    admits_per_day: dict[int, int] = {}
+    discharges_per_day: dict[int, int] = {}
 
     sim_time = start
     patient_idx = 0
@@ -186,7 +205,7 @@ def run_capsule(params: CapsuleParams) -> dict:
 
             # Snapshot wenn fällig
             while next_snapshot <= arr_dt and next_snapshot <= end:
-                snapshots.append(_capture_snapshot(next_snapshot))
+                snapshots.append(_capture_snapshot(next_snapshot, bundesland_ids))
                 next_snapshot += snapshot_interval
 
             # Auch Entlassungen durchführen die bis arr_dt passieren
@@ -206,6 +225,8 @@ def run_capsule(params: CapsuleParams) -> dict:
                     created_at=d_time,
                 ))
                 events_a03 += 1
+                d_day = (d_time - start).days
+                discharges_per_day[d_day] = discharges_per_day.get(d_day, 0) + 1
 
             # Patient finden/erstellen
             p = Patient(
@@ -222,7 +243,7 @@ def run_capsule(params: CapsuleParams) -> dict:
             batch.total += 1
             setattr(batch, sk.lower(), getattr(batch, sk.lower()) + 1)
 
-            pick = _pick_target_kh(sk, hub, rng)
+            pick = _pick_target_kh(sk, hub, rng, params.bundesland)
             if pick is None:
                 p.status = "unassigned"
                 unassigned += 1
@@ -254,13 +275,14 @@ def run_capsule(params: CapsuleParams) -> dict:
                 created_at=arr_dt,
             ))
             events_a01 += 1
+            admits_per_day[day] = admits_per_day.get(day, 0) + 1
 
         # Am Tagesende committen, damit Session nicht zu fett wird
         db.session.commit()
 
     # Restliche Snapshots + noch anstehende Entlassungen nach Zeitraum-Ende
     while next_snapshot <= end:
-        snapshots.append(_capture_snapshot(next_snapshot))
+        snapshots.append(_capture_snapshot(next_snapshot, bundesland_ids))
         next_snapshot += snapshot_interval
 
     while pending_discharges and pending_discharges[0][0] <= end:
@@ -278,8 +300,24 @@ def run_capsule(params: CapsuleParams) -> dict:
             created_at=d_time,
         ))
         events_a03 += 1
+        d_day = (d_time - start).days
+        if 0 <= d_day < params.days:
+            discharges_per_day[d_day] = discharges_per_day.get(d_day, 0) + 1
 
     db.session.commit()
+
+    daily_summary = _compute_daily_summary(
+        snapshots, start, params.days, admits_per_day, discharges_per_day,
+    )
+
+    # Peak-Metriken über gesamte Simulation
+    peak_pct = {"SK1": 0.0, "SK2": 0.0, "SK3": 0.0}
+    peak_when = {"SK1": None, "SK2": None, "SK3": None}
+    for s in snapshots:
+        for sk in ("SK1", "SK2", "SK3"):
+            if s["pct"][sk] > peak_pct[sk]:
+                peak_pct[sk] = s["pct"][sk]
+                peak_when[sk] = s["t"]
 
     return {
         "batch_id": batch.id,
@@ -290,22 +328,30 @@ def run_capsule(params: CapsuleParams) -> dict:
         "unassigned": unassigned,
         "events_a01": events_a01,
         "events_a03": events_a03,
+        "peak_pct": peak_pct,
+        "peak_when": peak_when,
+        "daily_summary": daily_summary,
         "snapshots": snapshots,
     }
 
 
-def _capture_snapshot(at: datetime) -> dict:
-    """Summiert aktuelle Belegung deutschlandweit für Chart-Zeile."""
+def _capture_snapshot(at: datetime, bundesland_ids: set[int] | None = None) -> dict:
+    """Summiert aktuelle Belegung für Chart-Zeile. Optional auf Bundesland-Scope beschränkt."""
     from sqlalchemy import func
-    agg = db.session.query(
+    q = db.session.query(
         func.sum(KrankenhausBelegung.kapazitaet_sk1),
         func.sum(KrankenhausBelegung.kapazitaet_sk2),
         func.sum(KrankenhausBelegung.kapazitaet_sk3),
         func.sum(KrankenhausBelegung.belegung_sk1),
         func.sum(KrankenhausBelegung.belegung_sk2),
         func.sum(KrankenhausBelegung.belegung_sk3),
-    ).first()
+    )
+    if bundesland_ids is not None:
+        q = q.filter(KrankenhausBelegung.krankenhaus_id.in_(bundesland_ids))
+    agg = q.first()
     cap1, cap2, cap3, bel1, bel2, bel3 = [x or 0 for x in agg]
+    def _pct(b, c):
+        return round(b / c * 100, 1) if c else 0.0
     return {
         "t": at.isoformat(),
         "cap": {"SK1": cap1, "SK2": cap2, "SK3": cap3},
@@ -313,4 +359,42 @@ def _capture_snapshot(at: datetime) -> dict:
         "frei": {"SK1": max(cap1 - bel1, 0),
                  "SK2": max(cap2 - bel2, 0),
                  "SK3": max(cap3 - bel3, 0)},
+        "pct": {"SK1": _pct(bel1, cap1),
+                "SK2": _pct(bel2, cap2),
+                "SK3": _pct(bel3, cap3)},
     }
+
+
+def _compute_daily_summary(snapshots: list[dict], start: datetime, days: int,
+                           admits_per_day: dict, discharges_per_day: dict) -> list[dict]:
+    """Aggregiert die stündlichen Snapshots zu Tageskacheln."""
+    out = []
+    for day_i in range(days):
+        day_start = (start + timedelta(days=day_i)).replace(hour=0, minute=0, second=0, microsecond=0)
+        day_end = day_start + timedelta(days=1)
+        day_snaps = [s for s in snapshots
+                     if day_start.isoformat() <= s["t"] < day_end.isoformat()]
+        if not day_snaps:
+            continue
+        # Peak = höchste Gesamt-Auslastung am Tag
+        peak = {}
+        closing = day_snaps[-1]  # letzter Snapshot des Tages
+        for sk in ("SK1", "SK2", "SK3"):
+            pmax = max(s["pct"][sk] for s in day_snaps)
+            peak_snap = next(s for s in day_snaps if s["pct"][sk] == pmax)
+            peak[sk] = {
+                "pct_peak": pmax,
+                "bel_peak": peak_snap["bel"][sk],
+                "bel_close": closing["bel"][sk],
+                "pct_close": closing["pct"][sk],
+                "cap": closing["cap"][sk],
+            }
+        out.append({
+            "day": day_i + 1,
+            "date": day_start.date().isoformat(),
+            "label": day_start.strftime("%a %d.%m."),
+            "aufnahmen": admits_per_day.get(day_i, 0),
+            "entlassungen": discharges_per_day.get(day_i, 0),
+            "peak": peak,
+        })
+    return out
