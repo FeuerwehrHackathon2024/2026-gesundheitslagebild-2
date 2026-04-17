@@ -15,6 +15,7 @@ from .dispatch import (
     reset_belegung,
 )
 from .extensions import db
+from .here_traffic import traffic_flow, traffic_incidents
 from .hl7_ingest import apply_event, parse_hl7_adt
 from .models import (
     AdtEvent,
@@ -590,6 +591,26 @@ def adt_simulate():
                         "krankenhaus": ev.krankenhaus.name if ev.krankenhaus else None})
 
     return jsonify({"generated": count, "events": applied[-20:]})
+
+
+# ===================== HERE Traffic =====================
+
+@api_bp.get("/traffic/flow")
+def api_traffic_flow():
+    lat = request.args.get("lat", type=float, default=48.422)
+    lon = request.args.get("lon", type=float, default=9.952)
+    radius = request.args.get("radius", type=int, default=5000)
+    radius = max(500, min(radius, 20000))
+    return jsonify(traffic_flow(lat, lon, radius_m=radius))
+
+
+@api_bp.get("/traffic/incidents")
+def api_traffic_incidents():
+    lat = request.args.get("lat", type=float, default=48.422)
+    lon = request.args.get("lon", type=float, default=9.952)
+    radius = request.args.get("radius", type=int, default=15000)
+    radius = max(500, min(radius, 50000))
+    return jsonify(traffic_incidents(lat, lon, radius_m=radius))
 
 
 @api_bp.get("/stats")

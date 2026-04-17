@@ -1,0 +1,324 @@
+{% extends "base.html" %}
+
+{% block title %}Verkehrslage · MANV-Dispatch{% endblock %}
+
+{% block head_extra %}
+<style>
+.traffic-legend {
+  position: absolute; bottom: 12px; right: 12px; z-index: 1000;
+  background: #fff; padding: 0.6rem 0.8rem; border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15); font-size: 0.8rem;
+}
+.traffic-legend .row-l { display: flex; align-items: center; gap: 6px; margin-bottom: 2px; }
+.traffic-legend .swatch { width: 20px; height: 4px; border-radius: 2px; }
+.traffic-stats {
+  position: absolute; top: 12px; left: 60px; z-index: 1000;
+  background: #fff; padding: 0.5rem 0.8rem; border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.12); font-size: 0.82rem;
+  max-width: 280px;
+}
+.inc-icon {
+  display: flex; align-items: center; justify-content: center;
+  width: 28px; height: 28px; border-radius: 50%;
+  background: #b71c1c; color: #fff; font-size: 14px;
+  border: 2px solid #fff; box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+}
+.inc-icon.construction { background: #f57c00; }
+.inc-icon.closure { background: #212529; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+  <div class="d-flex justify-content-between align-items-start mb-3 flex-wrap gap-3">
+    <div>
+      <h1 class="h3 mb-1"><i class="bi bi-signpost-split text-danger"></i> Verkehrslage Live</h1>
+      <p class="text-body-secondary mb-0">
+        Live-Verkehr aus der HERE Traffic API v7 — Flow (Stauanzeige) und Incidents
+        (Baustellen, Unfälle, Sperrungen) im Umkreis des gewählten Zentrums.
+      </p>
+    </div>
+    <a href="/" class="btn btn-outline-danger"><i class="bi bi-arrow-left"></i> Dashboard</a>
+  </div>
+
+  <div class="card shadow-sm mb-3">
+    <div class="card-body py-3">
+      <div class="row g-2 align-items-end">
+        <div class="col-md-3">
+          <label class="form-label small fw-semibold mb-1">Zentrum</label>
+          <select class="form-select form-select-sm" id="center-sel">
+            <option value="48.422,9.952">Hub Süd (Ulm)</option>
+          </select>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label small fw-semibold mb-1">Eigene Koordinaten</label>
+          <input type="text" class="form-control form-control-sm" id="center-manual" placeholder="lat,lon (z.B. 48.14,11.58)">
+        </div>
+        <div class="col-md-2">
+          <label class="form-label small fw-semibold mb-1">Flow-Radius</label>
+          <div class="input-group input-group-sm">
+            <input type="number" class="form-control" id="flow-radius" value="5" min="1" max="20">
+            <span class="input-group-text">km</span>
+          </div>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label small fw-semibold mb-1">Incident-Radius</label>
+          <div class="input-group input-group-sm">
+            <input type="number" class="form-control" id="inc-radius" value="15" min="1" max="50">
+            <span class="input-group-text">km</span>
+          </div>
+        </div>
+        <div class="col-md-2 d-flex gap-1">
+          <button class="btn btn-danger btn-sm flex-grow-1" id="btn-load">
+            <i class="bi bi-arrow-clockwise"></i> Laden
+          </button>
+          <button class="btn btn-outline-secondary btn-sm" id="btn-auto" title="Auto-Refresh alle 60s">
+            <i class="bi bi-broadcast"></i>
+          </button>
+        </div>
+      </div>
+      <div class="mt-2 small text-body-secondary d-flex justify-content-between">
+        <span id="stats-line">—</span>
+        <div>
+          <span class="form-check form-check-inline form-switch mb-0">
+            <input class="form-check-input" type="checkbox" id="toggle-flow" checked>
+            <label class="form-check-label small" for="toggle-flow">Flow</label>
+          </span>
+          <span class="form-check form-check-inline form-switch mb-0">
+            <input class="form-check-input" type="checkbox" id="toggle-inc" checked>
+            <label class="form-check-label small" for="toggle-inc">Incidents</label>
+          </span>
+          <span class="form-check form-check-inline form-switch mb-0">
+            <input class="form-check-input" type="checkbox" id="toggle-kh">
+            <label class="form-check-label small" for="toggle-kh">Kliniken</label>
+          </span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card shadow-sm position-relative">
+    <div class="card-body p-0">
+      <div id="traffic-map" style="height: calc(100vh - 320px); min-height: 520px; border-radius: 8px;"></div>
+
+      <div class="traffic-legend">
+        <div class="fw-semibold mb-1">Jam-Factor</div>
+        <div class="row-l"><div class="swatch" style="background:#2e7d32"></div> 0–2 (frei)</div>
+        <div class="row-l"><div class="swatch" style="background:#f9a825"></div> 2–5 (zäh)</div>
+        <div class="row-l"><div class="swatch" style="background:#e65100"></div> 5–8 (Stau)</div>
+        <div class="row-l"><div class="swatch" style="background:#b71c1c"></div> 8–10 (blockiert)</div>
+      </div>
+
+      <div class="traffic-stats" id="traffic-stats" style="display:none;"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  const esc = s => (s ?? "").toString().replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"})[c]);
+
+  // Kliniken lazy laden (für Toggle)
+  let kliniken = null;
+  let khLayer = null;
+  let flowLayer = null;
+  let incLayer = null;
+  let autoTimer = null;
+
+  const map = L.map("traffic-map").setView([48.422, 9.952], 11);
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+    { attribution: "© OpenStreetMap · HERE Traffic", maxZoom: 18 }).addTo(map);
+
+  const centerSel = document.getElementById("center-sel");
+  // Hubs & Top-Städte nachladen
+  fetch("/api/hubs").then(r => r.json()).then(hubs => {
+    hubs.forEach(h => {
+      const opt = Array.from(centerSel.options).find(o => o.value === `${h.lat},${h.lon}`);
+      if (!opt && h.lat && h.lon) {
+        const o = document.createElement("option");
+        o.value = `${h.lat},${h.lon}`;
+        o.textContent = `Hub: ${h.name} (${h.ort || ""})`;
+        centerSel.appendChild(o);
+      }
+    });
+  });
+  // Ein paar Städte als Default-Auswahl
+  [["München", 48.1351, 11.5820], ["Berlin", 52.520, 13.405], ["Hamburg", 53.5511, 9.9937],
+   ["Frankfurt/Main", 50.1109, 8.6821], ["Köln", 50.9375, 6.9603], ["Stuttgart", 48.7758, 9.1829]]
+    .forEach(([n, la, lo]) => {
+      const o = document.createElement("option");
+      o.value = `${la},${lo}`; o.textContent = n;
+      centerSel.appendChild(o);
+    });
+
+  function getCenter() {
+    const manual = document.getElementById("center-manual").value.trim();
+    if (manual) {
+      const [la, lo] = manual.split(",").map(Number);
+      if (!isNaN(la) && !isNaN(lo)) return [la, lo];
+    }
+    const [la, lo] = centerSel.value.split(",").map(Number);
+    return [la, lo];
+  }
+
+  function colorByJam(jam) {
+    if (jam == null) return "#9e9e9e";
+    if (jam < 2)  return "#2e7d32";
+    if (jam < 5)  return "#f9a825";
+    if (jam < 8)  return "#e65100";
+    return "#b71c1c";
+  }
+
+  function clearLayers() {
+    if (flowLayer) { map.removeLayer(flowLayer); flowLayer = null; }
+    if (incLayer)  { map.removeLayer(incLayer);  incLayer = null; }
+  }
+
+  async function loadFlow(lat, lon, radiusKm) {
+    const resp = await fetch(`/api/traffic/flow?lat=${lat}&lon=${lon}&radius=${radiusKm * 1000}`);
+    const j = await resp.json();
+    if (j.error) return { error: j.error, count: 0, avg_jam: 0 };
+    const layer = L.layerGroup().addTo(map);
+    let sumJam = 0, countJam = 0;
+    for (const s of j.segments) {
+      if (s.coords.length < 2) continue;
+      const latlngs = s.coords.map(([lo, la]) => [la, lo]);
+      const color = colorByJam(s.jam_factor);
+      const weight = s.jam_factor && s.jam_factor > 5 ? 5 : 3;
+      const line = L.polyline(latlngs, { color, weight, opacity: 0.85 });
+      const speed = s.speed != null ? s.speed.toFixed(0) : "—";
+      const free = s.free_flow != null ? s.free_flow.toFixed(0) : "—";
+      const jam = s.jam_factor != null ? s.jam_factor.toFixed(1) : "—";
+      line.bindPopup(`
+        <div>
+          <strong>${esc(s.description || "Strecke")}</strong><br>
+          <span class="badge" style="background:${color}">Jam: ${jam}</span>
+          <div class="small mt-1">Speed: ${speed} / ${free} km/h (Frei-Fluss)<br>
+            Befahrbarkeit: ${esc(s.traversability || "")}<br>
+            Confidence: ${s.confidence != null ? (s.confidence * 100).toFixed(0) + "%" : "—"}
+          </div>
+        </div>`);
+      layer.addLayer(line);
+      if (s.jam_factor != null) { sumJam += s.jam_factor; countJam++; }
+    }
+    flowLayer = layer;
+    return { count: j.segments.length, avg_jam: countJam ? sumJam / countJam : 0 };
+  }
+
+  async function loadIncidents(lat, lon, radiusKm) {
+    const resp = await fetch(`/api/traffic/incidents?lat=${lat}&lon=${lon}&radius=${radiusKm * 1000}`);
+    const j = await resp.json();
+    if (j.error) return { error: j.error, count: 0 };
+    const layer = L.layerGroup().addTo(map);
+    for (const i of j.incidents) {
+      if (i.lat == null) continue;
+      const typeLow = (i.type || "").toLowerCase();
+      const cls = typeLow.includes("construct") ? "construction"
+                : i.road_closed ? "closure" : "";
+      const icon = L.divIcon({
+        html: `<div class="inc-icon ${cls}"><i class="bi bi-exclamation-triangle-fill"></i></div>`,
+        iconSize: [28, 28], iconAnchor: [14, 14], className: "",
+      });
+      const m = L.marker([i.lat, i.lon], { icon });
+      m.bindPopup(`
+        <strong>${esc(i.type || "Incident")}</strong><br>
+        <span class="small">${esc(i.description || "")}</span>
+        ${i.road_closed ? '<br><span class="badge bg-dark">Straße gesperrt</span>' : ""}
+        <div class="small text-body-secondary mt-1">
+          ${i.start_time ? "Start: " + new Date(i.start_time).toLocaleString("de-DE") : ""}<br>
+          ${i.end_time ? "Ende: " + new Date(i.end_time).toLocaleString("de-DE") : ""}
+        </div>`);
+      layer.addLayer(m);
+      if (i.coords && i.coords.length > 1) {
+        L.polyline(i.coords.map(([lo, la]) => [la, lo]),
+          { color: i.road_closed ? "#212529" : "#b71c1c",
+            weight: 4, opacity: 0.55, dashArray: i.road_closed ? "" : "6,4" }
+        ).addTo(layer);
+      }
+    }
+    incLayer = layer;
+    return { count: j.incidents.length };
+  }
+
+  async function loadKliniken(lat, lon, radiusKm) {
+    if (!kliniken) {
+      kliniken = await fetch("/api/krankenhaeuser").then(r => r.json());
+    }
+    if (khLayer) map.removeLayer(khLayer);
+    khLayer = L.layerGroup().addTo(map);
+    const R = 6371;
+    const rad = d => d * Math.PI / 180;
+    const d2 = (la1, lo1, la2, lo2) => {
+      const dlat = rad(la2 - la1), dlon = rad(lo2 - lo1);
+      const a = Math.sin(dlat/2)**2 + Math.cos(rad(la1))*Math.cos(rad(la2))*Math.sin(dlon/2)**2;
+      return 2 * R * Math.asin(Math.sqrt(a));
+    };
+    let cnt = 0;
+    for (const k of kliniken) {
+      if (k.lat == null) continue;
+      if (d2(lat, lon, k.lat, k.lon) > radiusKm) continue;
+      const icon = L.divIcon({
+        html: `<div class="kh-pin sk${(k.sk_max || "").replace("SK","")}">${(k.sk_max || "–").replace("SK","")}</div>`,
+        iconSize: [22, 22], iconAnchor: [11, 11], className: "",
+      });
+      L.marker([k.lat, k.lon], { icon })
+        .bindPopup(`<a href="/krankenhaus/${k.id}">${esc(k.name)}</a><br><span class="small">${esc(k.ort || "")}</span>`)
+        .addTo(khLayer);
+      cnt++;
+    }
+    return cnt;
+  }
+
+  async function load() {
+    const [lat, lon] = getCenter();
+    const flowRKm = Number(document.getElementById("flow-radius").value) || 5;
+    const incRKm = Number(document.getElementById("inc-radius").value) || 15;
+    map.setView([lat, lon], 12);
+    // Zentrumsmarker
+    L.circle([lat, lon], { radius: flowRKm * 1000, color: "#212529", weight: 1, fillOpacity: 0.02, dashArray: "4,4" }).addTo(map);
+
+    clearLayers();
+    const stats = document.getElementById("stats-line");
+    stats.innerHTML = `<span class="text-body-secondary"><i class="bi bi-hourglass-split"></i> Lade HERE-Traffic…</span>`;
+
+    const doFlow = document.getElementById("toggle-flow").checked;
+    const doInc  = document.getElementById("toggle-inc").checked;
+    const doKh   = document.getElementById("toggle-kh").checked;
+
+    const [flow, inc] = await Promise.all([
+      doFlow ? loadFlow(lat, lon, flowRKm) : {count: 0},
+      doInc ? loadIncidents(lat, lon, incRKm) : {count: 0},
+    ]);
+    const khCount = doKh ? await loadKliniken(lat, lon, flowRKm * 2) : 0;
+
+    const parts = [];
+    if (doFlow) parts.push(`<strong>${flow.count}</strong> Flow-Segmente · Ø Jam ${(flow.avg_jam || 0).toFixed(1)}`);
+    if (doInc)  parts.push(`<strong>${inc.count}</strong> Incidents`);
+    if (doKh)   parts.push(`<strong>${khCount}</strong> Kliniken im Bereich`);
+    if (flow.error) parts.push(`<span class="text-danger">${flow.error}</span>`);
+    if (inc.error) parts.push(`<span class="text-danger">${inc.error}</span>`);
+    stats.innerHTML = parts.join(" · ") + ` <span class="text-body-secondary small">(${new Date().toLocaleTimeString("de-DE")})</span>`;
+  }
+
+  document.getElementById("btn-load").addEventListener("click", load);
+  document.getElementById("toggle-flow").addEventListener("change", load);
+  document.getElementById("toggle-inc").addEventListener("change", load);
+  document.getElementById("toggle-kh").addEventListener("change", load);
+
+  document.getElementById("btn-auto").addEventListener("click", () => {
+    const btn = document.getElementById("btn-auto");
+    if (autoTimer) {
+      clearInterval(autoTimer); autoTimer = null;
+      btn.classList.remove("btn-danger"); btn.classList.add("btn-outline-secondary");
+    } else {
+      load();
+      autoTimer = setInterval(load, 60000);
+      btn.classList.add("btn-danger"); btn.classList.remove("btn-outline-secondary");
+    }
+  });
+
+  // Initial
+  load();
+})();
+</script>
+{% endblock %}

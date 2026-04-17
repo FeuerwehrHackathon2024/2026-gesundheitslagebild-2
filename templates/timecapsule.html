@@ -245,6 +245,9 @@
   const stateTC = { snapshots: [], daily: [], idx: 0, playing: false, timer: null };
   let chart = null;
 
+  const esc = s => (s ?? "").toString().replace(/[&<>"']/g,
+    c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"})[c]);
+
   document.getElementById("tc-grund").addEventListener("input",
     e => document.getElementById("tc-grund-val").textContent = e.target.value);
 

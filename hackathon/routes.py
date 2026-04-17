@@ -93,6 +93,11 @@ def adt_page() -> str:
     return render_template("adt.html")
 
 
+@main_bp.get("/traffic")
+def traffic_page() -> str:
+    return render_template("traffic.html")
+
+
 @main_bp.get("/timecapsule")
 def timecapsule_page() -> str:
     return render_template("timecapsule.html")
