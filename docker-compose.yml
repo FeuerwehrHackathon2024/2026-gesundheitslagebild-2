@@ -1,0 +1,41 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-hackathon}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-hackathon_dev}
+      POSTGRES_DB: ${POSTGRES_DB:-hackathon}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-hackathon} -d ${POSTGRES_DB:-hackathon}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+    networks: [appnet]
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-hackathon}:${POSTGRES_PASSWORD:-hackathon_dev}@db:5432/${POSTGRES_DB:-hackathon}
+      SECRET_KEY: ${SECRET_KEY:-change-me-in-env}
+      FLASK_ENV: production
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "${WEB_PORT:-80}:8000"
+    restart: unless-stopped
+    networks: [appnet]
+
+volumes:
+  pgdata:
+
+networks:
+  appnet:
+    driver: bridge

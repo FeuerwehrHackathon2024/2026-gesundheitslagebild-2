@@ -88,6 +88,32 @@ class Krankenhaus(db.Model):
 Krankenhaeuser = Krankenhaus
 
 
+class Hub(db.Model):
+    __tablename__ = "hub"
+
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(128), nullable=False, unique=True)
+    lat = db.Column(db.Float, nullable=False)
+    lon = db.Column(db.Float, nullable=False)
+    ort = db.Column(db.String(128), nullable=True)
+    bundesland = db.Column(db.String(64), nullable=True)
+    kapazitaet_pro_tag = db.Column(db.Integer, nullable=True)
+    beschreibung = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "name": self.name,
+            "lat": self.lat,
+            "lon": self.lon,
+            "ort": self.ort,
+            "bundesland": self.bundesland,
+            "kapazitaet_pro_tag": self.kapazitaet_pro_tag,
+            "beschreibung": self.beschreibung,
+        }
+
+
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)

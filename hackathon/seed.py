@@ -12,7 +12,7 @@ from sqlalchemy.exc import OperationalError
 
 from .config import BASE_DIR
 from .extensions import db
-from .models import Krankenhaus
+from .models import Hub, Krankenhaus
 
 log = logging.getLogger(__name__)
 
@@ -141,8 +141,32 @@ def seed_krankenhaus(force: bool = False, csv_path: Path | None = None) -> int:
     return len(rows)
 
 
+def seed_hubs_if_empty() -> int:
+    """Legt den initialen Hub Süd (Ulm) an, wenn noch kein Hub existiert."""
+    _ensure_table_exists()
+    if db.session.query(Hub).count() > 0:
+        return 0
+    hub = Hub(
+        name="Hub Süd",
+        lat=48.4220,
+        lon=9.9520,
+        ort="Ulm",
+        bundesland="Baden-Württemberg",
+        kapazitaet_pro_tag=250,
+        beschreibung=(
+            "Eingangspunkt Süddeutschland — Universitätsklinikum Ulm, "
+            "Trauma-Level-1-Zentrum. 72 h Vorlauf zur Patientenankunft, "
+            "~250 Verletzte/Tag."
+        ),
+    )
+    db.session.add(hub)
+    db.session.commit()
+    log.info("Hub 'Hub Süd' initial angelegt (Ulm).")
+    return 1
+
+
 def seed_if_empty(app) -> None:
-    """In create_app() aufzurufen: füllt die Tabelle nur wenn sie leer ist."""
+    """In create_app() aufzurufen: füllt Tabellen nur wenn leer."""
     with app.app_context():
         try:
             count = db.session.query(Krankenhaus).count()
@@ -152,3 +176,7 @@ def seed_if_empty(app) -> None:
             inserted = seed_krankenhaus(force=False)
             if inserted:
                 app.logger.info("Auto-Seed: %d Krankenhäuser importiert.", inserted)
+        try:
+            seed_hubs_if_empty()
+        except OperationalError:
+            pass

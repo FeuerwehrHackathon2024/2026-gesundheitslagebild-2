@@ -11,9 +11,11 @@ def create_app(config_class: type[Config] = Config) -> Flask:
     db.init_app(app)
     migrate.init_app(app, db)
 
+    from .api import api_bp
     from .routes import main_bp
 
     app.register_blueprint(main_bp)
+    app.register_blueprint(api_bp)
 
     from . import models  # noqa: F401
 

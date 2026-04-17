@@ -1,0 +1,147 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard · Krankenhäuser{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-0">
+  <div class="row g-0">
+
+    <!-- Sidebar: Filter -->
+    <aside class="col-lg-3 col-xl-3 border-end bg-body-tertiary sidebar-scroll">
+      <div class="p-3">
+        <h2 class="h6 text-uppercase text-body-secondary mb-3">
+          <i class="bi bi-funnel-fill me-1"></i> Filter
+        </h2>
+
+        <!-- Live Counter -->
+        <div id="stats-bar" class="alert alert-secondary py-2 px-3 small mb-3 d-flex justify-content-between align-items-center">
+          <span><strong id="stats-visible">—</strong> / <span id="stats-total">—</span> Kliniken</span>
+          <div class="d-flex gap-1">
+            <span class="badge sk-badge sk1" title="SK1"><span id="stats-sk1">–</span></span>
+            <span class="badge sk-badge sk2" title="SK2"><span id="stats-sk2">–</span></span>
+            <span class="badge sk-badge sk3" title="SK3"><span id="stats-sk3">–</span></span>
+          </div>
+        </div>
+
+        <!-- SK-Stufe -->
+        <div class="mb-3">
+          <label class="form-label fw-semibold mb-2">Sichtungskategorie</label>
+          <div class="btn-group w-100" role="group" aria-label="SK-Stufe">
+            <input type="checkbox" class="btn-check" id="flt-sk1" checked data-sk="1">
+            <label class="btn btn-outline-sk1" for="flt-sk1">SK1</label>
+
+            <input type="checkbox" class="btn-check" id="flt-sk2" checked data-sk="2">
+            <label class="btn btn-outline-sk2" for="flt-sk2">SK2</label>
+
+            <input type="checkbox" class="btn-check" id="flt-sk3" checked data-sk="3">
+            <label class="btn btn-outline-sk3" for="flt-sk3">SK3</label>
+          </div>
+          <div class="form-text">Klinik muss die gewählte Stufe versorgen können.</div>
+        </div>
+
+        <!-- Radius um Hub -->
+        <div class="mb-3">
+          <label for="flt-radius" class="form-label fw-semibold d-flex justify-content-between mb-2">
+            <span>Radius um Hub</span>
+            <span class="text-body-secondary"><span id="flt-radius-val">100</span> km</span>
+          </label>
+          <input type="range" class="form-range" id="flt-radius" min="10" max="500" step="10" value="100">
+        </div>
+
+        <!-- Mindest-Betten -->
+        <div class="mb-3">
+          <label for="flt-betten" class="form-label fw-semibold d-flex justify-content-between mb-2">
+            <span>Mindest-Betten</span>
+            <span class="text-body-secondary">≥ <span id="flt-betten-val">0</span></span>
+          </label>
+          <input type="range" class="form-range" id="flt-betten" min="0" max="3000" step="50" value="0">
+        </div>
+
+        <!-- Versorgungs-Flags -->
+        <div class="mb-3">
+          <label class="form-label fw-semibold mb-2">Versorgung</label>
+          <div class="row g-1" id="flag-checks">
+            <div class="col-6"><div class="form-check form-check-sm"><input class="form-check-input" type="checkbox" id="flg-its" data-flag="hat_intensivmedizin"><label class="form-check-label small" for="flg-its">Intensivmed.</label></div></div>
+            <div class="col-6"><div class="form-check form-check-sm"><input class="form-check-input" type="checkbox" id="flg-notfall" data-flag="hat_notaufnahme"><label class="form-check-label small" for="flg-notfall">Notaufnahme</label></div></div>
+            <div class="col-6"><div class="form-check form-check-sm"><input class="form-check-input" type="checkbox" id="flg-bg" data-flag="hat_bg_zulassung"><label class="form-check-label small" for="flg-bg">BG-Zulassung</label></div></div>
+            <div class="col-6"><div class="form-check form-check-sm"><input class="form-check-input" type="checkbox" id="flg-radio" data-flag="hat_radiologie"><label class="form-check-label small" for="flg-radio">Radiologie</label></div></div>
+            <div class="col-6"><div class="form-check form-check-sm"><input class="form-check-input" type="checkbox" id="flg-onko" data-flag="hat_onkologie"><label class="form-check-label small" for="flg-onko">Onkologie</label></div></div>
+            <div class="col-6"><div class="form-check form-check-sm"><input class="form-check-input" type="checkbox" id="flg-psych" data-flag="hat_psychiatrie"><label class="form-check-label small" for="flg-psych">Psychiatrie</label></div></div>
+            <div class="col-6"><div class="form-check form-check-sm"><input class="form-check-input" type="checkbox" id="flg-geri" data-flag="hat_geriatrie"><label class="form-check-label small" for="flg-geri">Geriatrie</label></div></div>
+            <div class="col-6"><div class="form-check form-check-sm"><input class="form-check-input" type="checkbox" id="flg-dial" data-flag="hat_dialyse"><label class="form-check-label small" for="flg-dial">Dialyse</label></div></div>
+          </div>
+        </div>
+
+        <!-- Special -->
+        <div class="mb-3">
+          <label class="form-label fw-semibold mb-2">Profil</label>
+          <div class="form-check form-check-sm">
+            <input class="form-check-input" type="checkbox" id="flt-uni">
+            <label class="form-check-label small" for="flt-uni">Nur Uni-/Lehrkrankenhäuser</label>
+          </div>
+        </div>
+
+        <!-- Bundesland -->
+        <div class="mb-3">
+          <label for="flt-bundesland" class="form-label fw-semibold mb-2">Bundesland</label>
+          <select class="form-select form-select-sm" id="flt-bundesland">
+            <option value="">Alle</option>
+          </select>
+        </div>
+
+        <!-- Trägerart -->
+        <div class="mb-3">
+          <label for="flt-traeger" class="form-label fw-semibold mb-2">Trägerart</label>
+          <select class="form-select form-select-sm" id="flt-traeger">
+            <option value="">Alle</option>
+          </select>
+        </div>
+
+        <!-- Suche -->
+        <div class="mb-3">
+          <label for="flt-search" class="form-label fw-semibold mb-2">Suche</label>
+          <input type="text" class="form-control form-control-sm" id="flt-search" placeholder="Name oder Ort …">
+        </div>
+
+        <button type="button" class="btn btn-outline-secondary btn-sm w-100" id="btn-reset">
+          <i class="bi bi-arrow-counterclockwise me-1"></i> Filter zurücksetzen
+        </button>
+      </div>
+    </aside>
+
+    <!-- Main: Map + List -->
+    <main class="col-lg-9 col-xl-9">
+      <div id="map" class="dashboard-map"></div>
+
+      <div class="p-3 bg-body">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <h2 class="h6 text-uppercase text-body-secondary mb-0">
+            <i class="bi bi-list-ul me-1"></i> Kliniken (sortiert nach Entfernung zum Hub)
+          </h2>
+          <span class="small text-body-secondary">Max 50 Einträge</span>
+        </div>
+        <div class="table-responsive">
+          <table class="table table-sm table-hover mb-0 align-middle small" id="klinik-table">
+            <thead class="table-light">
+              <tr>
+                <th>SK</th>
+                <th>Klinik</th>
+                <th>Ort</th>
+                <th class="text-end">Entf. (km)</th>
+                <th class="text-end">Betten</th>
+                <th>Versorgung</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </main>
+
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+{% endblock %}
