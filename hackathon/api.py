@@ -68,16 +68,17 @@ def update_kapazitaet(kh_id: int):
         db.session.add(bel)
     for sk in ("sk1", "sk2", "sk3"):
         key = f"kapazitaet_{sk}"
-        if key in payload:
-            try:
-                val = max(0, int(payload[key]))
-                setattr(bel, key, val)
-                # Belegung darf nie > Kapazität werden
-                bel_col = f"belegung_{sk}"
-                if getattr(bel, bel_col, 0) > val:
-                    setattr(bel, bel_col, val)
-            except (TypeError, ValueError):
-                return jsonify({"error": f"{key} muss Integer sein"}), 400
+        if key not in payload:
+            continue
+        try:
+            val = max(0, int(payload[key]))
+        except (TypeError, ValueError):
+            return jsonify({"error": f"{key} muss Integer sein"}), 400
+        setattr(bel, key, val)
+        bel_col = f"belegung_{sk}"
+        current_bel = getattr(bel, bel_col, 0) or 0
+        if current_bel > val:
+            setattr(bel, bel_col, val)
     db.session.commit()
     return jsonify({
         "id": kh.id, "name": kh.name,
