@@ -41,3 +41,35 @@ instance/
 .DS_Store
 Thumbs.db
 
+# --- Secrets / Access files (DO NOT COMMIT) ---
+team01
+team01.pub
+IP
+*.pem
+*.key
+id_rsa*
+id_ed25519*
+secrets/
+credentials/
+
+# --- Claude Code local state ---
+.claude/
+.cursorrules
+.aider*
+
+# --- Frontend ---
+node_modules/
+.next/
+.nuxt/
+.vite/
+dist-ssr/
+
+# --- DB artefacts ---
+postgres-data/
+pgdata/
+*.sqlite
+*.db
+
+# Raw intermediate export (wird über Script neu gezogen)
+data/krankenhaeuser_db.csv
+
