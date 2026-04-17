@@ -183,6 +183,37 @@ class KrankenhausBelegung(db.Model):
         return max(cap - bel, 0)
 
 
+class Fahrt(db.Model):
+    """Eine Fahrzeug-Fahrt von Hub zu einer Klinik, ggf. mit mehreren Patienten gebündelt."""
+    __tablename__ = "fahrt"
+
+    id = db.Column(db.Integer, primary_key=True)
+    fahrt_code = db.Column(db.String(32), nullable=True, unique=True)  # z.B. F-0001
+    batch_id = db.Column(db.Integer, db.ForeignKey("patienten_batch.id"), nullable=True)
+    hub_id = db.Column(db.Integer, db.ForeignKey("hub.id"), nullable=True)
+    krankenhaus_id = db.Column(db.Integer, db.ForeignKey("krankenhaus.id"), nullable=False)
+    transportmittel = db.Column(db.String(16), nullable=False)  # RTW/KTW/Taxi
+    kapazitaet = db.Column(db.Integer, nullable=False)
+    anzahl_patienten = db.Column(db.Integer, default=0)
+    hub_lat = db.Column(db.Float, nullable=True)
+    hub_lon = db.Column(db.Float, nullable=True)
+    ziel_lat = db.Column(db.Float, nullable=True)
+    ziel_lon = db.Column(db.Float, nullable=True)
+    abfahrt = db.Column(db.DateTime, nullable=True)
+    ankunft = db.Column(db.DateTime, nullable=True)
+    distanz_km = db.Column(db.Float, nullable=True)
+    dauer_min = db.Column(db.Float, nullable=True)
+    routing_source = db.Column(db.String(16), nullable=True)
+    route_geojson = db.Column(db.Text, nullable=True)
+    here_polyline = db.Column(db.Text, nullable=True)
+    here_instructions_json = db.Column(db.Text, nullable=True)
+    status = db.Column(db.String(32), default="geplant")
+    erzeugt_am = db.Column(db.DateTime, default=datetime.utcnow)
+
+    krankenhaus = db.relationship("Krankenhaus")
+    hub = db.relationship("Hub")
+
+
 class TransportAuftrag(db.Model):
     __tablename__ = "transport_auftrag"
     __table_args__ = (
@@ -193,6 +224,8 @@ class TransportAuftrag(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     patient_id = db.Column(db.Integer, db.ForeignKey("patient.id"), nullable=False)
     batch_id = db.Column(db.Integer, db.ForeignKey("patienten_batch.id"), nullable=True)
+    fahrt_id = db.Column(db.Integer, db.ForeignKey("fahrt.id"), nullable=True)
+    bundle_position = db.Column(db.Integer, nullable=True)  # 1..N innerhalb Fahrt
     hub_id = db.Column(db.Integer, db.ForeignKey("hub.id"), nullable=True)
     hub_lat = db.Column(db.Float, nullable=True)
     hub_lon = db.Column(db.Float, nullable=True)
@@ -218,6 +251,7 @@ class TransportAuftrag(db.Model):
     patient = db.relationship("Patient")
     krankenhaus = db.relationship("Krankenhaus")
     hub = db.relationship("Hub")
+    fahrt = db.relationship("Fahrt", backref=db.backref("transporte", lazy="dynamic"))
 
 
 class User(db.Model):

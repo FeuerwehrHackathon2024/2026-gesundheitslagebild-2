@@ -16,6 +16,7 @@ from .dispatch import (
 )
 from .extensions import db
 from .models import (
+    Fahrt,
     Hub,
     Krankenhaus,
     KrankenhausBelegung,
@@ -571,17 +572,117 @@ def batch_from_simulator():
 
 @api_bp.post("/reset/all")
 def reset_all():
-    """Löscht alle Batches, Patienten, Transporte und setzt Belegung auf 0."""
+    """Löscht alle Batches, Patienten, Transporte, Fahrten und setzt Belegung auf 0."""
     t_count = db.session.query(TransportAuftrag).delete()
+    f_count = db.session.query(Fahrt).delete()
     p_count = db.session.query(Patient).delete()
     b_count = db.session.query(PatientenBatch).delete()
     cleared = reset_belegung()
     db.session.commit()
     return jsonify({
         "transports_deleted": t_count,
+        "fahrten_deleted": f_count,
         "patients_deleted": p_count,
         "batches_deleted": b_count,
         "belegung_reset": cleared,
+    })
+
+
+# ===================== Fahrten =====================
+
+@api_bp.get("/fahrten")
+def list_fahrten():
+    batch_id = request.args.get("batch_id", type=int)
+    q = Fahrt.query.order_by(
+        db.case((Fahrt.transportmittel == "RTW", 1),
+                (Fahrt.transportmittel == "KTW", 2), else_=3),
+        Fahrt.abfahrt.asc().nulls_last(),
+    )
+    if batch_id:
+        q = q.filter(Fahrt.batch_id == batch_id)
+    out = []
+    for f in q.all():
+        patienten = [{
+            "patient_id": t.patient_id,
+            "external_id": t.patient.external_id if t.patient else None,
+            "sk": t.sk,
+            "position": t.bundle_position,
+        } for t in f.transporte]
+        kh = f.krankenhaus
+        out.append({
+            "id": f.id,
+            "fahrt_code": f.fahrt_code,
+            "transportmittel": f.transportmittel,
+            "kapazitaet": f.kapazitaet,
+            "anzahl_patienten": f.anzahl_patienten,
+            "abfahrt": f.abfahrt.isoformat() if f.abfahrt else None,
+            "ankunft": f.ankunft.isoformat() if f.ankunft else None,
+            "distanz_km": f.distanz_km,
+            "dauer_min": f.dauer_min,
+            "routing_source": f.routing_source,
+            "status": f.status,
+            "hub": {"lat": f.hub_lat, "lon": f.hub_lon, "name": f.hub.name if f.hub else None},
+            "ziel": None if not kh else {
+                "id": kh.id, "name": kh.name, "ort": kh.ort,
+                "lat": f.ziel_lat, "lon": f.ziel_lon,
+            },
+            "patienten": patienten,
+        })
+    return jsonify(out)
+
+
+@api_bp.get("/fahrten/<int:fahrt_id>")
+def get_fahrt(fahrt_id: int):
+    import json as _json
+    f = db.session.get(Fahrt, fahrt_id)
+    if f is None:
+        abort(404)
+    actions = None
+    if f.here_instructions_json:
+        try:
+            actions = _json.loads(f.here_instructions_json)
+        except Exception:  # noqa: BLE001
+            actions = None
+    geojson = None
+    if f.route_geojson:
+        try:
+            geojson = _json.loads(f.route_geojson)
+        except Exception:  # noqa: BLE001
+            geojson = None
+    patienten = []
+    for t in f.transporte:
+        p = t.patient
+        patienten.append({
+            "patient_id": t.patient_id,
+            "external_id": p.external_id if p else None,
+            "sk": t.sk,
+            "position": t.bundle_position,
+            "quelle": p.quelle if p else None,
+            "aufenthaltsdauer_tage": p.aufenthaltsdauer_tage if p else None,
+        })
+    kh = f.krankenhaus
+    return jsonify({
+        "id": f.id,
+        "fahrt_code": f.fahrt_code,
+        "transportmittel": f.transportmittel,
+        "kapazitaet": f.kapazitaet,
+        "abfahrt": f.abfahrt.isoformat() if f.abfahrt else None,
+        "ankunft": f.ankunft.isoformat() if f.ankunft else None,
+        "distanz_km": f.distanz_km,
+        "dauer_min": f.dauer_min,
+        "routing_source": f.routing_source,
+        "status": f.status,
+        "hub": {"lat": f.hub_lat, "lon": f.hub_lon, "name": f.hub.name if f.hub else None},
+        "ziel": None if not kh else {
+            "id": kh.id, "name": kh.name, "ort": kh.ort, "plz": kh.plz,
+            "strasse": kh.strasse, "hausnummer": kh.hausnummer,
+            "telefon": kh.telefon,
+            "lat": f.ziel_lat, "lon": f.ziel_lon,
+        },
+        "patienten": patienten,
+        "route_geojson": geojson,
+        "actions": actions,
+        "here_polyline": f.here_polyline,
     })
 
 

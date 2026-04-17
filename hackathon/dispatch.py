@@ -17,6 +17,7 @@ from .extensions import db
 from .here_client import fetch_route
 from .ivena_mapping import SK_TRANSPORTMITTEL as IVENA_TRANSPORTMITTEL
 from .models import (
+    Fahrt,
     Hub,
     Krankenhaus,
     KrankenhausBelegung,
@@ -35,6 +36,13 @@ SK_TRANSPORTMITTEL = {"SK1": "RTW", "SK2": "KTW", "SK3": "Taxi"}
 
 # Pickup-Offset je Transportmittel in Minuten (bis der Patient am Hub abgeholt ist)
 TRANSPORTMITTEL_PICKUP_OFFSET_MIN = {"RTW": 2, "KTW": 5, "Taxi": 10}
+
+# Fahrzeug-Kapazitäten (Anzahl Patienten pro Fahrt)
+TRANSPORTMITTEL_KAPAZITAET = {
+    "RTW": 2,   # Rettungswagen: max 2 liegend
+    "KTW": 1,   # Krankentransportwagen: 1 Patient
+    "Taxi": 2,  # Taxi/Patiententransport: 2 sitzend
+}
 
 # SK-Kompatibilität: ein SK1-fähiges KH kann auch SK2 und SK3 versorgen
 SK_KANN_COLS = {
@@ -272,6 +280,7 @@ def dispatch_batch(batch: PatientenBatch, hub: Hub, use_here: bool = True) -> Di
     unassigned = 0
     transports: list[TransportAuftrag] = []
     distances: list[float] = []
+    p_assignments: list[dict] = []
 
     for p in pending_patients:
         candidates = eligibles_by_sk.get(p.sk, [])
@@ -302,62 +311,121 @@ def dispatch_batch(batch: PatientenBatch, hub: Hub, use_here: bool = True) -> Di
         col = f"belegung_{p.sk.lower()}"
         setattr(target_bel, col, getattr(target_bel, col) + 1)
 
-        # Route: HERE wenn Key da, sonst Haversine-Schätzung
-        if use_here:
-            route = fetch_route((hub.lat, hub.lon), (target.lat, target.lon))
-            distanz_km = route.distance_km
-            dauer_min = route.duration_min
-            here_polyline = route.polyline
-            here_actions_json = (
-                None if not route.actions
-                else __import__("json").dumps(route.actions, ensure_ascii=False)
-            )
-            route_geojson = (
-                None if not route.geojson
-                else __import__("json").dumps(route.geojson)
-            )
-            routing_source = route.source
-        else:
-            distanz_km = target_dist
-            # grob 70 km/h, 30% Umwegfaktor
-            dauer_min = round(distanz_km / 70 * 60 * 1.3, 1)
-            here_polyline = None
-            here_actions_json = None
-            route_geojson = None
-            routing_source = "haversine"
-
-        # Transportmittel + Zeiten
+        # Zuweisung merken — Fahrt + Route bündeln wir nach dem Loop
         tm_info = IVENA_TRANSPORTMITTEL.get(p.sk, {})
         tm_code = tm_info.get("code", "KTW")
-        pickup_offset_min = TRANSPORTMITTEL_PICKUP_OFFSET_MIN.get(tm_code, 5)
-        base_time = p.transportbereit or p.eingangssichtung or datetime.utcnow()
-        abfahrt_dt = base_time + timedelta(minutes=pickup_offset_min)
-        ankunft_dt = abfahrt_dt + timedelta(minutes=dauer_min or 0)
-
-        t = TransportAuftrag(
-            patient_id=p.id,
-            batch_id=batch.id,
-            hub_id=hub.id,
-            hub_lat=hub.lat,
-            hub_lon=hub.lon,
-            krankenhaus_id=target.id,
-            ziel_lat=target.lat,
-            ziel_lon=target.lon,
-            sk=p.sk,
-            distanz_km=distanz_km,
-            dauer_min=dauer_min,
-            transportmittel=tm_code,
-            abfahrt=abfahrt_dt,
-            ankunft=ankunft_dt,
-            here_polyline=here_polyline,
-            here_instructions_json=here_actions_json,
-            route_geojson=route_geojson,
-            routing_source=routing_source,
-        )
-        db.session.add(t)
-        transports.append(t)
-        distances.append(distanz_km)
+        p_assignments.append({
+            "patient": p, "krankenhaus": target, "distance": target_dist, "tm_code": tm_code,
+        })
+        distances.append(target_dist)
         assigned += 1
+
+    # ---------- Bündelung: (krankenhaus_id, transportmittel) → Fahrten ----------
+    # Ziel: pro Fahrzeug genau 1 HERE-Abfrage, mehrere Patienten gebündelt.
+    from collections import defaultdict
+    buckets: dict[tuple[int, str], list[dict]] = defaultdict(list)
+    for a in p_assignments:
+        buckets[(a["krankenhaus"].id, a["tm_code"])].append(a)
+
+    # Route-Cache je (kh_id) → HERE nur 1× pro Klinik, unabhängig vom Transportmittel
+    route_cache: dict[int, dict] = {}
+    fahrt_counter = 0
+    fahrten_created = 0
+
+    for (kh_id, tm_code), assigns in buckets.items():
+        kapazitaet = TRANSPORTMITTEL_KAPAZITAET.get(tm_code, 1)
+        target = assigns[0]["krankenhaus"]
+
+        # Route holen — EIN HERE-Call pro Klinik, Ergebnis für alle Fahrten wiederverwenden
+        if kh_id not in route_cache:
+            if use_here:
+                route = fetch_route((hub.lat, hub.lon), (target.lat, target.lon))
+                import json as _json
+                route_cache[kh_id] = {
+                    "distanz_km": route.distance_km,
+                    "dauer_min": route.duration_min,
+                    "polyline": route.polyline,
+                    "actions_json": (
+                        None if not route.actions
+                        else _json.dumps(route.actions, ensure_ascii=False)
+                    ),
+                    "geojson": (
+                        None if not route.geojson else _json.dumps(route.geojson)
+                    ),
+                    "source": route.source,
+                }
+            else:
+                # Haversine-Fallback
+                d_km = haversine_km(hub.lat, hub.lon, target.lat, target.lon)
+                route_cache[kh_id] = {
+                    "distanz_km": round(d_km, 2),
+                    "dauer_min": round(d_km / 70 * 60 * 1.3, 1),
+                    "polyline": None,
+                    "actions_json": None,
+                    "geojson": None,
+                    "source": "haversine",
+                }
+        rc = route_cache[kh_id]
+
+        # SK1 zuerst innerhalb der Gruppe (vital zuerst ausfahren)
+        assigns.sort(key=lambda a: {"SK1": 0, "SK2": 1, "SK3": 2}.get(a["patient"].sk, 3))
+
+        # In Fahrten splitten nach Kapazität
+        for i in range(0, len(assigns), kapazitaet):
+            chunk = assigns[i:i + kapazitaet]
+            fahrt_counter += 1
+            fahrt_code = f"F-{batch.id:03d}-{fahrt_counter:04d}"
+
+            # Abfahrt/Ankunft: frühester Transportbereit der Chunk-Patienten + Pickup-Offset
+            ready_times = [a["patient"].transportbereit or a["patient"].eingangssichtung or datetime.utcnow() for a in chunk]
+            base_time = max(ready_times)  # wir warten auf letzten im Bündel
+            pickup_offset_min = TRANSPORTMITTEL_PICKUP_OFFSET_MIN.get(tm_code, 5)
+            abfahrt_dt = base_time + timedelta(minutes=pickup_offset_min)
+            ankunft_dt = abfahrt_dt + timedelta(minutes=rc["dauer_min"] or 0)
+
+            fahrt = Fahrt(
+                fahrt_code=fahrt_code,
+                batch_id=batch.id,
+                hub_id=hub.id,
+                krankenhaus_id=kh_id,
+                transportmittel=tm_code,
+                kapazitaet=kapazitaet,
+                anzahl_patienten=len(chunk),
+                hub_lat=hub.lat, hub_lon=hub.lon,
+                ziel_lat=target.lat, ziel_lon=target.lon,
+                abfahrt=abfahrt_dt, ankunft=ankunft_dt,
+                distanz_km=rc["distanz_km"], dauer_min=rc["dauer_min"],
+                routing_source=rc["source"],
+                route_geojson=rc["geojson"],
+                here_polyline=rc["polyline"],
+                here_instructions_json=rc["actions_json"],
+            )
+            db.session.add(fahrt)
+            db.session.flush()
+            fahrten_created += 1
+
+            # Pro Patient einen TransportAuftrag mit fahrt_id + bundle_position
+            for pos, a in enumerate(chunk, start=1):
+                p = a["patient"]
+                t = TransportAuftrag(
+                    patient_id=p.id, batch_id=batch.id, fahrt_id=fahrt.id,
+                    bundle_position=pos,
+                    hub_id=hub.id, hub_lat=hub.lat, hub_lon=hub.lon,
+                    krankenhaus_id=kh_id, ziel_lat=target.lat, ziel_lon=target.lon,
+                    sk=p.sk,
+                    distanz_km=rc["distanz_km"], dauer_min=rc["dauer_min"],
+                    transportmittel=tm_code,
+                    abfahrt=abfahrt_dt, ankunft=ankunft_dt,
+                    here_polyline=rc["polyline"],
+                    here_instructions_json=rc["actions_json"],
+                    route_geojson=rc["geojson"],
+                    routing_source=rc["source"],
+                )
+                db.session.add(t)
+                transports.append(t)
+
+    log.info("Dispatch: %d Patienten → %d Fahrten (HERE-Calls: %d)",
+             assigned, fahrten_created, len(route_cache) if use_here else 0)
 
     batch.status = "dispatched"
     batch.dispatched_at = datetime.utcnow()
@@ -373,13 +441,14 @@ def dispatch_batch(batch: PatientenBatch, hub: Hub, use_here: bool = True) -> Di
 
 
 def reset_dispatch(batch: PatientenBatch) -> int:
-    """Transportaufträge + Zuweisungen eines Batches zurücksetzen."""
+    """Transportaufträge + Fahrten + Zuweisungen eines Batches zurücksetzen."""
     # Transportaufträge löschen
     deleted = (
         db.session.query(TransportAuftrag)
         .filter(TransportAuftrag.batch_id == batch.id)
         .delete()
     )
+    db.session.query(Fahrt).filter(Fahrt.batch_id == batch.id).delete()
     # Belegungen reduzieren
     for p in batch.patients.filter(Patient.status == "assigned").all():
         if p.assigned_krankenhaus_id:

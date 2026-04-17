@@ -143,7 +143,11 @@
       return `
         <tr>
           <td><span class="badge sk-badge ${skCls}">${esc(p.sk)}</span></td>
-          <td><span class="font-monospace small">${esc(p.external_id || "#" + p.id)}</span></td>
+          <td>
+            <a href="/patients/${p.id}" class="font-monospace small text-decoration-none">
+              ${esc(p.external_id || "#" + p.id)}
+            </a>
+          </td>
           <td>${esc(p.quelle || "")}</td>
           <td class="fw-semibold">${esc(ziel.name || "—")}</td>
           <td>${esc(ziel.ort || "")}</td>

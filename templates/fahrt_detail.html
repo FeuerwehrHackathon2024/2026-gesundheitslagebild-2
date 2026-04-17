@@ -1,0 +1,154 @@
+{% extends "base.html" %}
+
+{% block title %}Fahrt · MANV-Dispatch{% endblock %}
+
+{% block head_extra %}
+<style>@media print { .no-print { display: none !important; } .app-navbar, .app-footer { display: none !important; } }</style>
+{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+  <div class="d-flex justify-content-between no-print">
+    <a href="/fahrten" class="small text-body-secondary text-decoration-none">
+      <i class="bi bi-arrow-left"></i> Alle Fahrten
+    </a>
+    <button class="btn btn-sm btn-outline-secondary" onclick="window.print()">
+      <i class="bi bi-printer"></i> Drucken
+    </button>
+  </div>
+
+  <div id="f-header" class="mt-2 mb-3"></div>
+
+  <div class="row g-3">
+    <div class="col-lg-7">
+      <div class="card shadow-sm mb-3">
+        <div class="card-header"><h2 class="h6 mb-0"><i class="bi bi-clock"></i> Zeitplan</h2></div>
+        <div class="card-body" id="f-zeitplan"></div>
+      </div>
+
+      <div class="card shadow-sm mb-3">
+        <div class="card-header"><h2 class="h6 mb-0"><i class="bi bi-people-fill"></i> Patienten auf dieser Fahrt</h2></div>
+        <div class="card-body p-0">
+          <table class="table mb-0 small align-middle">
+            <thead class="table-light">
+              <tr><th>Pos</th><th>SK</th><th>Patient-ID</th><th>Herkunft</th><th>Aufenthalt</th><th></th></tr>
+            </thead>
+            <tbody id="f-patienten"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card shadow-sm mb-3">
+        <div class="card-header"><h2 class="h6 mb-0"><i class="bi bi-hospital-fill text-success"></i> Ziel-Klinik</h2></div>
+        <div class="card-body" id="f-ziel"></div>
+      </div>
+
+      <div class="card shadow-sm" id="actions-card" style="display:none;">
+        <div class="card-header"><h2 class="h6 mb-0"><i class="bi bi-signpost-2-fill"></i> Fahrtanweisungen</h2></div>
+        <div class="card-body"><ol class="small mb-0" id="f-actions"></ol></div>
+      </div>
+    </div>
+
+    <div class="col-lg-5">
+      <div class="card shadow-sm">
+        <div class="card-header"><h2 class="h6 mb-0"><i class="bi bi-map"></i> Tour</h2></div>
+        <div class="card-body p-0"><div id="f-map" style="height:620px;"></div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const FAHRT_ID = {{ fahrt_id }};
+(async function () {
+  const esc = s => (s ?? "").toString().replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"})[c]);
+  const fmtDt = s => s ? new Date(s).toLocaleString("de-DE") : "—";
+  const r = await fetch(`/api/fahrten/${FAHRT_ID}`);
+  if (!r.ok) { document.body.innerHTML = "<div class='container py-4'><div class='alert alert-danger'>Fahrt nicht gefunden.</div></div>"; return; }
+  const f = await r.json();
+
+  const vehicleBadge = f.transportmittel === "RTW" ? '<span class="badge bg-danger fs-5">RTW</span>'
+    : f.transportmittel === "KTW" ? '<span class="badge bg-warning text-dark fs-5">KTW</span>'
+    : '<span class="badge bg-primary fs-5">Taxi</span>';
+
+  document.getElementById("f-header").innerHTML = `
+    <h1 class="h3 mb-1">
+      <i class="bi bi-truck text-danger"></i> Fahrt ${esc(f.fahrt_code)}
+      <span class="ms-2">${vehicleBadge}</span>
+      <span class="badge bg-secondary ms-1 small">${esc(f.routing_source || "")}</span>
+    </h1>
+    <div class="text-body-secondary">Auslastung: <strong>${f.patienten.length}/${f.kapazitaet}</strong> · Status: ${esc(f.status)}</div>`;
+
+  document.getElementById("f-zeitplan").innerHTML = `
+    <div class="row text-center">
+      <div class="col-4 border-end">
+        <div class="text-body-secondary small">Abfahrt</div>
+        <div class="h5 mb-0">${fmtDt(f.abfahrt)}</div>
+      </div>
+      <div class="col-4 border-end">
+        <div class="text-body-secondary small">Ankunft</div>
+        <div class="h5 mb-0">${fmtDt(f.ankunft)}</div>
+      </div>
+      <div class="col-4">
+        <div class="text-body-secondary small">Route</div>
+        <div class="h5 mb-0">${f.distanz_km?.toFixed(1) ?? "–"} km · ${f.dauer_min ? Math.round(f.dauer_min) : "–"} min</div>
+      </div>
+    </div>`;
+
+  const tb = document.getElementById("f-patienten");
+  tb.innerHTML = f.patienten.map(p => {
+    const sk = "sk" + (p.sk || "").replace("SK", "");
+    return `
+      <tr>
+        <td class="text-body-secondary">#${p.position}</td>
+        <td><span class="badge sk-badge ${sk}">${esc(p.sk)}</span></td>
+        <td><a href="/patients/${p.patient_id}" class="font-monospace text-decoration-none">${esc(p.external_id || "#"+p.patient_id)}</a></td>
+        <td class="small">${esc(p.quelle || "—")}</td>
+        <td class="small">${p.aufenthaltsdauer_tage ?? "–"} Tage</td>
+        <td><a href="/patients/${p.patient_id}" class="btn btn-sm btn-outline-danger"><i class="bi bi-arrow-right"></i></a></td>
+      </tr>`;
+  }).join("");
+
+  if (f.ziel) {
+    const z = f.ziel;
+    document.getElementById("f-ziel").innerHTML = `
+      <h6 class="mb-1"><a href="/krankenhaus/${z.id}" class="text-decoration-none text-body">${esc(z.name)}</a></h6>
+      <div class="small text-body-secondary">
+        ${esc([z.strasse, z.hausnummer].filter(Boolean).join(" "))}<br>
+        ${esc([z.plz, z.ort].filter(Boolean).join(" "))}
+      </div>
+      ${z.telefon ? `<div class="small mt-1"><i class="bi bi-telephone"></i> ${esc(z.telefon)}</div>` : ""}`;
+  }
+
+  const map = L.map("f-map");
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { attribution: "© OSM" }).addTo(map);
+  const bounds = [];
+  if (f.hub?.lat != null) {
+    L.marker([f.hub.lat, f.hub.lon], {
+      icon: L.divIcon({ html: '<div class="hub-pin"><i class="bi bi-hospital-fill"></i></div>', className: "", iconSize: [46,46], iconAnchor: [23,23] })
+    }).addTo(map).bindPopup("Hub");
+    bounds.push([f.hub.lat, f.hub.lon]);
+  }
+  if (f.ziel?.lat != null) {
+    L.marker([f.ziel.lat, f.ziel.lon]).addTo(map).bindPopup(esc(f.ziel.name));
+    bounds.push([f.ziel.lat, f.ziel.lon]);
+  }
+  const color = f.transportmittel === "RTW" ? "#dc3545" : f.transportmittel === "KTW" ? "#f57c00" : "#0d6efd";
+  if (f.route_geojson?.coordinates?.length) {
+    L.polyline(f.route_geojson.coordinates.map(([lo,la]) => [la, lo]),
+      { color, weight: 5, opacity: 0.8 }).addTo(map);
+  } else if (bounds.length === 2) {
+    L.polyline(bounds, { color, weight: 3, opacity: 0.6, dashArray: "6,6" }).addTo(map);
+  }
+  if (bounds.length) map.fitBounds(bounds, { padding: [40,40] });
+
+  if (f.actions?.length) {
+    document.getElementById("actions-card").style.display = "";
+    document.getElementById("f-actions").innerHTML = f.actions.map(a =>
+      `<li>${esc(a.instruction || a.action || "")}
+        ${a.length ? `<span class="text-body-secondary small"> (${a.length} m)</span>` : ""}</li>`
+    ).join("");
+  }
+})();
+</script>
+{% endblock %}
